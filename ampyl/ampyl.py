@@ -456,7 +456,7 @@ class QC:
 
         wf.close()
 
-    def print_for_raul(self, F, G, K, block_inv, matrix_in_det, inverse_det):
+
     def get_roots_at_fixed_L(self, Emax_for_roots=None, L_for_roots=None,
                              n_steps=10, k_params=None, project=True,
                              irrep=None, version='kdf_zero_1+_fgcombo',
@@ -726,7 +726,8 @@ class QC:
         E_upper = Estart+dE
         L_val = L_start
         iteration = 0
-        while L_val < L_finish:
+        while ((deltaL_target < 0. and L_val > L_finish) or
+               (deltaL_target > 0. and L_val < L_finish)):
             iteration += 1
             if iteration > max_iterations:
                 return np.array(Lvals_final), np.array(Evals_final), \

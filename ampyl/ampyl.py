@@ -351,6 +351,112 @@ class QC:
                 inverse_det = 1./np.linalg.det(matrix_in_det)
                 return inverse_det
 
+    def generate_summary(self, Elower=None, Eupper=None, L=None,
+                         k_params=None, project=True, irrep=None,
+                         version='kdf_zero_1+_fgcombo', rescale=1.0):
+        wf = open(f'summary_L{L:.1f}_irrep{irrep[0]}_'
+                  f'Elower{Elower:.1f}_Eupper{Eupper:.1f}.txt', 'w')
+        root = root_scalar(self.get_value,
+                           args=(L, k_params, project, irrep, version,
+                                 rescale),
+                           bracket=[Elower, Eupper]).root
+        wf.write('Summary of a quantization condition solution:\n\n'
+                 'Following inputs were given:\n')
+        wf.write(f'Elower = {Elower}\n'
+                 f'Eupper = {Eupper}\n'
+                 f'L = {L}\n'
+                 f'k_params = {k_params}\n'
+                 f'project = {project}\n'
+                 f'irrep = {irrep}\n'
+                 f'version = {version}\n'
+                 f'rescale = {rescale}\n'
+                 f'g_smart_interpolate = '
+                 f'{self.qcis.fvs.qc_impl["g_smart_interpolate"]}\n\n')
+
+        wf.write('A solution was found at\n'
+                 f'E = {root}\n\n')
+
+        qc_value = self.get_value(E=root, L=L, k_params=k_params,
+                                  project=project, irrep=irrep,
+                                  version=version, rescale=rescale)
+
+        wf.write('Value of the QC near the solution:\n')
+        for i in range(5):
+            scaler = 0.98+0.01*i
+            E = root*scaler
+            qc_value = self.get_value(E=E, L=L, k_params=k_params,
+                                      project=project, irrep=irrep,
+                                      version=version, rescale=rescale)
+            wf.write(f'qc(E = {scaler:.2f}sol) = {qc_value}\n')
+
+        G = self.g.get_value(E=root, L=L, project=project, irrep=irrep)
+        wf.write(f'\nShape of projected G-matrix at the solution: {G.shape}\n')
+        eigenvalues = np.sort(np.linalg.eigvals(G))
+        wf.write(f'Eigenvalues of projected G-matrix at the solution:\n'
+                 f'{eigenvalues}\n\n')
+        wf.write(f'Value of projected G-matrix at the solution:\n{G}\n\n')
+
+        F = self.f.get_value(E=root, L=L, project=project, irrep=irrep)
+        wf.write(f'Shape of projected F-matrix at the solution: {F.shape}\n')
+        eigenvalues = np.sort(np.linalg.eigvals(F))
+        wf.write(f'Eigenvalues of projected F-matrix at the solution:\n'
+                 f'{eigenvalues}\n\n')
+        wf.write(f'Value of projected F-matrix at the solution:\n{F}\n\n')
+
+        K = self.k.get_value(E=root, L=L,
+                             pcotdelta_parameter_lists=k_params[0],
+                             project=project, irrep=irrep)
+        wf.write(f'Shape of projected K-matrix at the solution: {K.shape}\n')
+        eigenvalues = np.sort(np.linalg.eigvals(K))
+        wf.write(f'Eigenvalues of projected K-matrix at the solution:\n'
+                 f'{eigenvalues}\n\n')
+        wf.write(f'Value of projected K-matrix at the solution:\n{K}\n\n')
+
+        ident_tmp = np.identity(len(F))
+        qc_matrix = (ident_tmp+(F+G)@K)
+        wf.write(f'Shape of the projected I+(F+G)K at the solution: '
+                 f'{qc_matrix.shape}\n')
+        eigenvalues = np.sort(np.linalg.eigvals(qc_matrix))
+        wf.write('Eigenvalues of the projected I+(F+G)K at the solution:\n'
+                 f'{eigenvalues}\n\n')
+        wf.write('Value of the projected I+(F+G)K at the solution:\n'
+                 f'{qc_matrix}\n\n')
+
+        G = self.g.get_value(E=root, L=L)
+        wf.write(f'Shape of unprojected G-matrix at the solution: {G.shape}\n')
+        eigenvalues = np.sort(np.linalg.eigvals(G))
+        wf.write(f'Eigenvalues of unprojected G-matrix at the solution:\n'
+                 f'{eigenvalues}\n\n')
+        wf.write(f'Value of unprojected G-matrix at the solution:\n{G}\n\n')
+
+        F = self.f.get_value(E=root, L=L)
+        wf.write(f'Shape of unprojected F-matrix at the solution: {F.shape}\n')
+        eigenvalues = np.sort(np.linalg.eigvals(F))
+        wf.write(f'Eigenvalues of unprojected F-matrix at the solution:\n'
+                 f'{eigenvalues}\n\n')
+        wf.write(f'Value of unprojected F-matrix at the solution:\n{F}\n\n')
+
+        K = self.k.get_value(E=root, L=L,
+                             pcotdelta_parameter_lists=k_params[0])
+        wf.write(f'Shape of unprojected K-matrix at the solution: {K.shape}\n')
+        eigenvalues = np.sort(np.linalg.eigvals(K))
+        wf.write(f'Eigenvalues of unprojected K-matrix at the solution:\n'
+                 f'{eigenvalues}\n\n')
+        wf.write(f'Value of unprojected K-matrix at the solution:\n{K}\n\n')
+
+        ident_tmp = np.identity(len(F))
+        qc_matrix = (ident_tmp+(F+G)@K)
+        wf.write(f'Shape of the unprojected I+(F+G)K at the solution: '
+                 f'{qc_matrix.shape}\n')
+        eigenvalues = np.sort(np.linalg.eigvals(qc_matrix))
+        wf.write('Eigenvalues of the unprojected I+(F+G)K at the solution:\n'
+                 f'{eigenvalues}\n\n')
+        wf.write('Value of the unprojected I+(F+G)K at the solution:\n'
+                 f'{qc_matrix}\n')
+
+        wf.close()
+
+    def print_for_raul(self, F, G, K, block_inv, matrix_in_det, inverse_det):
     def get_roots_at_fixed_L(self, Emax_for_roots=None, L_for_roots=None,
                              n_steps=10, k_params=None, project=True,
                              irrep=None, version='kdf_zero_1+_fgcombo',

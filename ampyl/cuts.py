@@ -1078,8 +1078,10 @@ class Interpolable:
                 else:
                     smart_textures = self.smart_textures_lists[irrep][
                         cob_list_len-self.qcis.get_tbks_sub_indices(E, L)[0]-1]
-                    complement_textures = self.complement_textures_lists[irrep][
-                        cob_list_len-self.qcis.get_tbks_sub_indices(E, L)[0]-1]
+                    tmp_sub_index = self.qcis.get_tbks_sub_indices(E, L)[0]
+                    complement_textures =\
+                        self.complement_textures_lists[
+                            irrep][cob_list_len-tmp_sub_index-1]
                 omegas =\
                     np.sqrt(smart_poles*FOURPI2/L**2
                             + np.array([m1**2, m2**2, m3**2]))

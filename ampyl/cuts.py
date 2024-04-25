@@ -1099,10 +1099,10 @@ class Interpolable:
         if self.cob_list_lens != {} and len(self.cob_matrix_lists[irrep]) != 0:
             if ((len(cob_matrix) != len(smooth_value))
                or (len(cob_matrix) != len(smooth_value.T))):
-                smooth_to_discard = smooth_value[len(cob_matrix):]
-                smooth_to_discard_T = (smooth_value.T)[len(cob_matrix):]
-                epsilon = np.sum(smooth_to_discard**2)\
-                    + np.sum(smooth_to_discard_T**2)
+                # smooth_to_discard = smooth_value[len(cob_matrix):]
+                # smooth_to_discard_T = (smooth_value.T)[len(cob_matrix):]
+                # epsilon = np.sum(smooth_to_discard**2)\
+                #    + np.sum(smooth_to_discard_T**2)
                 smooth_value = smooth_value[:len(cob_matrix)]
                 smooth_value_T = (smooth_value.T)[:len(cob_matrix)]
                 smooth_value = smooth_value_T.T

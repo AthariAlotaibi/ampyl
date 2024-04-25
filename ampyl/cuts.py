@@ -1051,7 +1051,11 @@ class Interpolable:
         return final_value
 
     def _get_value_smart_interpolated(self, E, L, irrep):
-        if self.cob_list_lens != {}:
+        if 'use_cob_matrices' in self.qcis.fvs.qc_impl:
+            use_cob_matrices = self.qcis.fvs.qc_impl['use_cob_matrices']
+        else:
+            use_cob_matrices = QC_IMPL_DEFAULTS['use_cob_matrices']
+        if self.cob_list_lens != {} and use_cob_matrices:
             cob_list_len = self.cob_list_lens[irrep]
         else:
             cob_list_len = 0
@@ -1074,8 +1078,10 @@ class Interpolable:
                 else:
                     smart_textures = self.smart_textures_lists[irrep][
                         cob_list_len-self.qcis.get_tbks_sub_indices(E, L)[0]-1]
-                    complement_textures = self.complement_textures_lists[irrep][
-                        cob_list_len-self.qcis.get_tbks_sub_indices(E, L)[0]-1]
+                    tmp_sub_index = self.qcis.get_tbks_sub_indices(E, L)[0]
+                    complement_textures =\
+                        self.complement_textures_lists[
+                            irrep][cob_list_len-tmp_sub_index-1]
                 omegas =\
                     np.sqrt(smart_poles*FOURPI2/L**2
                             + np.array([m1**2, m2**2, m3**2]))
@@ -1093,10 +1099,10 @@ class Interpolable:
         if self.cob_list_lens != {} and len(self.cob_matrix_lists[irrep]) != 0:
             if ((len(cob_matrix) != len(smooth_value))
                or (len(cob_matrix) != len(smooth_value.T))):
-                smooth_to_discard = smooth_value[len(cob_matrix):]
-                smooth_to_discard_T = (smooth_value.T)[len(cob_matrix):]
-                epsilon = np.sum(smooth_to_discard**2)\
-                    + np.sum(smooth_to_discard_T**2)
+                # smooth_to_discard = smooth_value[len(cob_matrix):]
+                # smooth_to_discard_T = (smooth_value.T)[len(cob_matrix):]
+                # epsilon = np.sum(smooth_to_discard**2)\
+                #    + np.sum(smooth_to_discard_T**2)
                 smooth_value = smooth_value[:len(cob_matrix)]
                 smooth_value_T = (smooth_value.T)[:len(cob_matrix)]
                 smooth_value = smooth_value_T.T

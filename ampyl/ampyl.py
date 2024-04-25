@@ -291,7 +291,7 @@ class QC:
             raise TypeError("missing required argument 'L' (float)")
         if k_params is None:
             raise TypeError("missing required argument 'k_params'")
-        if irrep is None:
+        if irrep is None and project:
             raise TypeError("missing required argument 'irrep'")
 
         if version == 'f3':

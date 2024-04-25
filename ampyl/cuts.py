@@ -1051,7 +1051,11 @@ class Interpolable:
         return final_value
 
     def _get_value_smart_interpolated(self, E, L, irrep):
-        if self.cob_list_lens != {}:
+        if 'use_cob_matrices' in self.qcis.fvs.qc_impl:
+            use_cob_matrices = self.qcis.fvs.qc_impl['use_cob_matrices']
+        else:
+            use_cob_matrices = QC_IMPL_DEFAULTS['use_cob_matrices']
+        if self.cob_list_lens != {} and use_cob_matrices:
             cob_list_len = self.cob_list_lens[irrep]
         else:
             cob_list_len = 0

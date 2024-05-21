@@ -1624,6 +1624,13 @@ class QCFunctions:
         return pSQ/tandop
 
     @staticmethod
+    def pcotdelta_ere_breit_wigner(pSQ=1.5, g_value=6.0, mrho_value=3.0):
+        Ecm = 2.0*np.sqrt(1.0+pSQ)
+        GammaEcmop = g_value**2/(6.0*np.pi)*((pSQ))/mrho_value**2
+        tandop = GammaEcmop*Ecm/(mrho_value**2-Ecm**2)
+        return pSQ/tandop
+
+    @staticmethod
     def getK_single_entry(pcotdelta_function=None,
                           pcotdelta_parameters=[1.0],
                           E=4.0, nP=np.array([0, 0, 0]), L=5.0,

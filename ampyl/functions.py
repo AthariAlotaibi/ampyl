@@ -94,10 +94,10 @@ class BKFunctions:
                 elif z_val >= 1.0:
                     J_array = np.append(J_array, 1.0)
                 else:
-                    J_array = np.append(J_array,
-                                        np.exp(
-                                            -1.0/z_val*np.exp(-1.0/(1.0-z_val))
-                                            ))
+                    J_array = np.append(
+                        J_array,
+                        np.exp(-1.0/z_val*np.exp(-1.0/(1.0-z_val)))
+                        )
             return J_array
         if isinstance(z, float):
             if z <= 0:

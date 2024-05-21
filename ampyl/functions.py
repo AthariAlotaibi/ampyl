@@ -1583,6 +1583,33 @@ class QCFunctions:
             f_list = f_list+[f_mat_entry]
         return block_diag(*f_list)
 
+    @staticmethod
+    def getF_array_IPV(IPV_function, IPV_parameters, E, nP, L, m1, m2, m3,
+                       tbks_entry, slice_entry, ell1, ell2, alpha, beta,
+                       C1cut, alphaKSS, qc_impl, ts):
+        nvec_arr_slice = tbks_entry.nvec_arr[slice_entry[0]:slice_entry[1]]
+        f_list = []
+        for nvec in nvec_arr_slice:
+            f_mat_entry = [[]]
+            for mazi1 in range(-ell1, ell1+1):
+                f_row = []
+                for mazi2 in range(-ell2, ell2+1):
+                    f_tmp = QCFunctions.getF_single_entry_IPV(
+                        IPV_function=None, IPV_parameters=[1.0],
+                        E=E, nP=nP, L=L, npspec=nvec, m1=m2, m2=m3, mspec=m1,
+                        C1cut=C1cut, alphaKSS=alphaKSS, alpha=alpha, beta=beta,
+                        ell1=ell1, mazi1=mazi1, ell2=ell2, mazi2=mazi2,
+                        three_scheme=ts, qc_impl=qc_impl)
+                    if np.abs(f_tmp.imag) < EPSILON15:
+                        f_tmp = f_tmp.real
+                    if np.abs(f_tmp) < EPSILON15:
+                        f_tmp = 0.0
+                    f_row = f_row+[f_tmp]
+                f_mat_entry = f_mat_entry+[f_row]
+            f_mat_entry = np.array(f_mat_entry[1:])
+            f_list = f_list+[f_mat_entry]
+        return block_diag(*f_list)
+
     def with_str(str_func):
         """Change print behavior of a function."""
         def wrapper(f):
@@ -1811,3 +1838,24 @@ class QCFunctions:
                 k_tmp = 0.0
             k_list = k_list+[k_tmp]*(2*ell+1)
         return block_diag(*k_list)
+
+    @staticmethod
+    def getK_array_IPV(E, nP, L, m1, m2, m3, tbks_entry, slice_entry, ell,
+                       pcotdelta_function, IPV_function,
+                       pcotdelta_parameter_list, IPV_parameters,
+                       alpha, beta, qc_impl, ts):
+        nvec_arr_slice = tbks_entry.nvec_arr[slice_entry[0]:slice_entry[1]]
+        k_list = []
+        for nvec in nvec_arr_slice:
+            k_tmp = QCFunctions.getK_single_entry_IPV(
+                pcotdelta_function, IPV_function,
+                pcotdelta_parameter_list, IPV_parameters,
+                E=E, nP=nP, L=L, npspec=nvec, m1=m2, m2=m3, mspec=m1,
+                alpha=alpha, beta=beta, ell=ell, qc_impl=qc_impl)
+            if np.abs(k_tmp.imag) < EPSILON15:
+                k_tmp = k_tmp.real
+            if np.abs(k_tmp) < EPSILON15:
+                k_tmp = 0.0
+            k_list = k_list+[k_tmp]*(2*ell+1)
+        return block_diag(*k_list)
+

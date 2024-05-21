@@ -1605,6 +1605,18 @@ class QCFunctions:
         r"""Scattering function \\(p cot \delta\\), scattering-length only."""
         return -1.0/a
 
+    @staticmethod
+    def IPV_constant(pSQ=1.5, c=1.0):
+        return c
+
+    @staticmethod
+    def IPV_poly(pSQ=1.5, c=1.0, d=1.0):
+        return c+pSQ*d
+
+    @staticmethod
+    def IPV_poly_root_removal(pSQ=1.5, c=1.0, d=1.0):
+        return (c+pSQ*d)/np.sqrt(pSQ+1.)
+
     def pcotdelta_breit_wigner_str():
         """Print behavior for pcotdelta_breit_wigner."""
         return "pcotdelta_breit_wigner"

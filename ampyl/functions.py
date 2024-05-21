@@ -1477,8 +1477,7 @@ class QCFunctions:
                               m1=1.0, m2=1.0, mspec=1.0,
                               C1cut=3, alphaKSS=1.0, alpha=-1.0, beta=0.0,
                               ell1=0, mazi1=0, ell2=0, mazi2=0,
-                              three_scheme='relativistic pole',
-                              qc_impl={}):
+                              three_scheme='relativistic pole', qc_impl={}):
         if IPV_function is None:
             IPV_function = QCFunctions.IPV_constant
         nP2 = nP - npspec
@@ -1543,9 +1542,11 @@ class QCFunctions:
 
     @staticmethod
     def getF_array(E, nP, L, m1, m2, m3, tbks_entry, slice_entry,
-                   ell1, ell2, alpha, beta, C1cut, alphaKSS, qc_impl, ts):
+                   ell1, ell2, alpha, beta, C1cut, alphaKSS, qc_impl,
+                   three_scheme, use_shift=False, IPV_function=None,
+                   IPV_parameters=[1.0]):
         """
-        Get F, numpy accelerated.
+        Get F.
 
         three_scheme is drawn from the following:
             'original pole'
@@ -1559,52 +1560,26 @@ class QCFunctions:
                 f_row = []
                 for mazi2 in range(-ell2, ell2+1):
                     # Awkward notation for masses here
-                    f_tmp = QCFunctions.getF_single_entry(E=E, nP=nP, L=L,
-                                                          npspec=nvec,
-                                                          m1=m2, m2=m3,
-                                                          mspec=m1,
-                                                          C1cut=C1cut,
-                                                          alphaKSS=alphaKSS,
-                                                          alpha=alpha,
-                                                          beta=beta,
-                                                          ell1=ell1,
-                                                          mazi1=mazi1,
-                                                          ell2=ell2,
-                                                          mazi2=mazi2,
-                                                          three_scheme=ts,
-                                                          qc_impl=qc_impl)
-                    if np.abs(f_tmp.imag) < EPSILON15:
-                        f_tmp = f_tmp.real
-                    if np.abs(f_tmp) < EPSILON15:
-                        f_tmp = 0.0
-                    f_row = f_row+[f_tmp]
-                f_mat_entry = f_mat_entry+[f_row]
-            f_mat_entry = np.array(f_mat_entry[1:])
-            f_list = f_list+[f_mat_entry]
-        return block_diag(*f_list)
-
-    @staticmethod
-    def getF_array_IPV(IPV_function, IPV_parameters, E, nP, L, m1, m2, m3,
-                       tbks_entry, slice_entry, ell1, ell2, alpha, beta,
-                       C1cut, alphaKSS, qc_impl, ts):
-        nvec_arr_slice = tbks_entry.nvec_arr[slice_entry[0]:slice_entry[1]]
-        f_list = []
-        for nvec in nvec_arr_slice:
-            f_mat_entry = [[]]
-            for mazi1 in range(-ell1, ell1+1):
-                f_row = []
-                for mazi2 in range(-ell2, ell2+1):
-                    f_tmp = QCFunctions.getF_single_entry_IPV(
-                        IPV_function=None, IPV_parameters=[1.0],
-                        E=E, nP=nP, L=L, npspec=nvec, m1=m2, m2=m3, mspec=m1,
-                        C1cut=C1cut, alphaKSS=alphaKSS, alpha=alpha, beta=beta,
-                        ell1=ell1, mazi1=mazi1, ell2=ell2, mazi2=mazi2,
-                        three_scheme=ts, qc_impl=qc_impl)
-                    if np.abs(f_tmp.imag) < EPSILON15:
-                        f_tmp = f_tmp.real
-                    if np.abs(f_tmp) < EPSILON15:
-                        f_tmp = 0.0
-                    f_row = f_row+[f_tmp]
+                    if use_shift:
+                        f_entry = QCFunctions.getF_single_entry_IPV(
+                            IPV_function=IPV_function, IPV_parameters=[1.0],
+                            E=E, nP=nP, L=L, npspec=nvec, m1=m2, m2=m3,
+                            mspec=m1, C1cut=C1cut, alphaKSS=alphaKSS,
+                            alpha=alpha, beta=beta, ell1=ell1, mazi1=mazi1,
+                            ell2=ell2, mazi2=mazi2, three_scheme=three_scheme,
+                            qc_impl=qc_impl)
+                    else:
+                        f_entry = QCFunctions.getF_single_entry(
+                            E=E, nP=nP, L=L, npspec=nvec, m1=m2, m2=m3,
+                            mspec=m1, C1cut=C1cut, alphaKSS=alphaKSS,
+                            alpha=alpha, beta=beta, ell1=ell1, mazi1=mazi1,
+                            ell2=ell2, mazi2=mazi2, three_scheme=three_scheme,
+                            qc_impl=qc_impl)
+                    if np.abs(f_entry.imag) < EPSILON15:
+                        f_entry = f_entry.real
+                    if np.abs(f_entry) < EPSILON15:
+                        f_entry = 0.0
+                    f_row = f_row+[f_entry]
                 f_mat_entry = f_mat_entry+[f_row]
             f_mat_entry = np.array(f_mat_entry[1:])
             f_list = f_list+[f_mat_entry]
@@ -1672,7 +1647,7 @@ class QCFunctions:
 
     @staticmethod
     def getK_single_entry(pcotdelta_function=None,
-                          pcotdelta_parameters=[1.0],
+                          pcotdelta_parameter_list=[1.0],
                           E=4.0, nP=np.array([0, 0, 0]), L=5.0,
                           npspec=np.array([0, 0, 0]),
                           m1=1.0, m2=1.0, mspec=1.0,
@@ -1702,7 +1677,7 @@ class QCFunctions:
             pSQ = (E2CMSQ**2-2.0*E2CMSQ*m1**2
                    + m1**4-2.0*E2CMSQ*m2**2-2.0*m1**2*m2**2+m2**4)\
                 / (4.0*E2CMSQ)
-        pcotdelta = pcotdelta_function(pSQ, *pcotdelta_parameters)
+        pcotdelta = pcotdelta_function(pSQ, *pcotdelta_parameter_list)
         q_one_minus_H_tmp = BKFunctions.q_one_minus_H(E2CMSQ=E2CMSQ,
                                                       m1=m1, m2=m2,
                                                       alpha=alpha,
@@ -1734,7 +1709,7 @@ class QCFunctions:
     @staticmethod
     def getK_single_entry_IPV(pcotdelta_function=None,
                               IPV_function=None,
-                              pcotdelta_parameters=[1.0],
+                              pcotdelta_parameter_list=[1.0],
                               IPV_parameters=[1.0],
                               E=4.0, nP=np.array([0, 0, 0]), L=5.0,
                               npspec=np.array([0, 0, 0]),
@@ -1761,7 +1736,7 @@ class QCFunctions:
             pSQ = (E2CMSQ**2-2.0*E2CMSQ*m1**2
                    + m1**4-2.0*E2CMSQ*m2**2-2.0*m1**2*m2**2+m2**4)\
                 / (4.0*E2CMSQ)
-        pcotdelta = pcotdelta_function(pSQ, *pcotdelta_parameters)
+        pcotdelta = pcotdelta_function(pSQ, *pcotdelta_parameter_list)
         q_one_minus_H = BKFunctions.q_one_minus_H(E2CMSQ=E2CMSQ,
                                                   m1=m1, m2=m2,
                                                   alpha=alpha,
@@ -1802,14 +1777,10 @@ class QCFunctions:
             return pre*16.0*PI*ECM/(pcotdelta+qH_IPV)
 
     @staticmethod
-    def getK_array(E, nP, L, m1, m2, m3,
-                   tbks_entry,
-                   slice_entry,
-                   ell,
-                   pcotdelta_function,
-                   pcotdelta_parameter_list,
-                   alpha, beta,
-                   qc_impl, ts):
+    def getK_array(E, nP, L, m1, m2, m3, tbks_entry, slice_entry, ell,
+                   pcotdelta_function, pcotdelta_parameter_list, alpha, beta,
+                   qc_impl, three_scheme, use_shift=False, IPV_function=None,
+                   IPV_parameters=0.):
         """
         Get K array.
 
@@ -1823,39 +1794,24 @@ class QCFunctions:
         nvec_arr_slice = tbks_entry.nvec_arr[slice_entry[0]:slice_entry[1]]
         k_list = []
         for nvec in nvec_arr_slice:
-            k_tmp = QCFunctions\
-                .getK_single_entry(pcotdelta_function,
-                                   pcotdelta_parameter_list,
-                                   E=E, nP=nP, L=L,
-                                   npspec=nvec,
-                                   m1=m2, m2=m3, mspec=m1,
-                                   alpha=alpha, beta=beta,
-                                   ell=ell,
-                                   qc_impl=qc_impl)
-            if np.abs(k_tmp.imag) < EPSILON15:
-                k_tmp = k_tmp.real
-            if np.abs(k_tmp) < EPSILON15:
-                k_tmp = 0.0
-            k_list = k_list+[k_tmp]*(2*ell+1)
-        return block_diag(*k_list)
-
-    @staticmethod
-    def getK_array_IPV(E, nP, L, m1, m2, m3, tbks_entry, slice_entry, ell,
-                       pcotdelta_function, IPV_function,
-                       pcotdelta_parameter_list, IPV_parameters,
-                       alpha, beta, qc_impl, ts):
-        nvec_arr_slice = tbks_entry.nvec_arr[slice_entry[0]:slice_entry[1]]
-        k_list = []
-        for nvec in nvec_arr_slice:
-            k_tmp = QCFunctions.getK_single_entry_IPV(
-                pcotdelta_function, IPV_function,
-                pcotdelta_parameter_list, IPV_parameters,
-                E=E, nP=nP, L=L, npspec=nvec, m1=m2, m2=m3, mspec=m1,
-                alpha=alpha, beta=beta, ell=ell, qc_impl=qc_impl)
-            if np.abs(k_tmp.imag) < EPSILON15:
-                k_tmp = k_tmp.real
-            if np.abs(k_tmp) < EPSILON15:
-                k_tmp = 0.0
-            k_list = k_list+[k_tmp]*(2*ell+1)
+            if use_shift:
+                k_entry = QCFunctions.getK_single_entry_IPV(
+                    pcotdelta_function=pcotdelta_function,
+                    IPV_function=IPV_function,
+                    pcotdelta_parameter_list=pcotdelta_parameter_list,
+                    IPV_parameters=IPV_parameters,
+                    E=E, nP=nP, L=L, npspec=nvec, m1=m2, m2=m3, mspec=m1,
+                    alpha=alpha, beta=beta, ell=ell, qc_impl=qc_impl)
+            else:
+                k_entry = QCFunctions.getK_single_entry(
+                    pcotdelta_function=pcotdelta_function,
+                    pcotdelta_parameter_list=pcotdelta_parameter_list,
+                    E=E, nP=nP, L=L, npspec=nvec, m1=m2, m2=m3, mspec=m1,
+                    alpha=alpha, beta=beta, ell=ell, qc_impl=qc_impl)
+            if np.abs(k_entry.imag) < EPSILON15:
+                k_entry = k_entry.real
+            if np.abs(k_entry) < EPSILON15:
+                k_entry = 0.0
+            k_list = k_list+[k_entry]*(2*ell+1)
         return block_diag(*k_list)
 

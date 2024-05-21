@@ -44,6 +44,7 @@ from .constants import EPSILON4
 from .constants import EPSILON5
 from .constants import EPSILON8
 from .constants import EPSILON10
+from .constants import QC_IMPL_DEFAULTS
 from .constants import bcolors
 from .functions import QCFunctions
 from .functions import BKFunctions

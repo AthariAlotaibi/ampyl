@@ -1684,6 +1684,76 @@ class QCFunctions:
                               f"{bcolors.ENDC}")
             return pre*16.0*PI*ECM/(pcotdelta+q_one_minus_H_tmp)
 
+    @staticmethod
+    def getK_single_entry_IPV(pcotdelta_function=None,
+                              IPV_function=None,
+                              pcotdelta_parameters=[1.0],
+                              IPV_parameters=[1.0],
+                              E=4.0, nP=np.array([0, 0, 0]), L=5.0,
+                              npspec=np.array([0, 0, 0]),
+                              m1=1.0, m2=1.0, mspec=1.0,
+                              alpha=-1.0, beta=0.0,
+                              ell=0,
+                              qc_impl={}):
+        if pcotdelta_function is None:
+            pcotdelta_function = QCFunctions.pcotdelta_scattering_length
+        if IPV_function is None:
+            IPV_function = QCFunctions.IPV_constant
+        P = TWOPI*nP/L
+        pspec = TWOPI*npspec/L
+        omspec = np.sqrt(mspec**2+pspec@pspec)
+        E2 = E-omspec
+        P2 = P-pspec
+        E2CMSQ = E2**2-P2@P2
+        if E2CMSQ <= 0.0 or E2 < 0.0:
+            return np.nan
+        ECM = np.sqrt(E2CMSQ)
+        if m1 == m2:
+            pSQ = E2CMSQ/4.0-m1**2
+        else:
+            pSQ = (E2CMSQ**2-2.0*E2CMSQ*m1**2
+                   + m1**4-2.0*E2CMSQ*m2**2-2.0*m1**2*m2**2+m2**4)\
+                / (4.0*E2CMSQ)
+        pcotdelta = pcotdelta_function(pSQ, *pcotdelta_parameters)
+        q_one_minus_H = BKFunctions.q_one_minus_H(E2CMSQ=E2CMSQ,
+                                                  m1=m1, m2=m2,
+                                                  alpha=alpha,
+                                                  beta=beta)
+        IPV = IPV_function(pSQ, *IPV_parameters)
+        include_H_in_IPV = QC_IMPL_DEFAULTS['include_H_in_IPV']
+        if 'include_H_in_IPV' in qc_impl:
+            include_H_in_IPV = qc_impl['include_H_in_IPV']
+        if include_H_in_IPV:
+            Htmp = BKFunctions.H(E2CMSQ, m1+m2, alpha, beta)
+            pcot_shift = IPV/pSQ**(ell)*np.sqrt(pSQ+1.0)*Htmp
+        else:
+            pcot_shift = IPV/pSQ**(ell)*np.sqrt(pSQ+1.0)
+        qH_IPV = q_one_minus_H-pcot_shift
+
+        pre = 1.0
+        hermitian = QC_IMPL_DEFAULTS['hermitian']
+        if 'hermitian' in qc_impl:
+            hermitian = qc_impl['hermitian']
+        if hermitian:
+            pre = pre*(2.0*omspec)
+
+        smarter_q_rescale = QC_IMPL_DEFAULTS['smarter_q_rescale']
+        if 'smarter_q_rescale' in qc_impl:
+            smarter_q_rescale = qc_impl['smarter_q_rescale']
+
+        if smarter_q_rescale:
+            pcotdelta = pcotdelta/np.abs(pSQ**(ell))
+            return pre*16.0*PI*ECM/(pcotdelta+qH_IPV)\
+                / np.abs(pSQ**(ell))
+        else:
+            pcotdelta = pcotdelta/np.abs(pSQ**(ell))
+            if ell == 1 and pSQ < 0.:
+                pcotdelta = - pcotdelta
+                warnings.warn(f"\n{bcolors.WARNING}"
+                              "flipping sign of pcotdelta for ell=1 and pSQ<0."
+                              f"{bcolors.ENDC}")
+            return pre*16.0*PI*ECM/(pcotdelta+qH_IPV)
+
     def getK_array(E, nP, L, m1, m2, m3,
                    tbks_entry,
                    slice_entry,

@@ -1452,6 +1452,7 @@ class QCFunctions:
         E2CM = np.sqrt(E2CMSQ)
         gamma = np.sqrt(gamSQ)
         alpha_mass = 0.5*(1.+(m1**2-m2**2)/E2CMSQ)
+
         Htmp = BKFunctions.H(E2CMSQ, m1+m2, alpha, beta)
         pre = -Htmp*2.0/(L*np.sqrt(PI)*16.0*PI*E2CM*gamma)
         hermitian = QC_IMPL_DEFAULTS['hermitian']
@@ -1468,6 +1469,77 @@ class QCFunctions:
                                                   alpha_mass, C1cut, alphaKSS,
                                                   ell1, mazi1,
                                                   ell2, mazi2, qc_impl))
+
+    @staticmethod
+    def getF_single_entry_IPV(IPV_function=None, IPV_parameters=[1.0],
+                              E=4.0, nP=np.array([0, 0, 0]), L=5.0,
+                              npspec=np.array([0, 0, 0]),
+                              m1=1.0, m2=1.0, mspec=1.0,
+                              C1cut=3, alphaKSS=1.0, alpha=-1.0, beta=0.0,
+                              ell1=0, mazi1=0, ell2=0, mazi2=0,
+                              three_scheme='relativistic pole',
+                              qc_impl={}):
+        if IPV_function is None:
+            IPV_function = QCFunctions.IPV_constant
+        nP2 = nP - npspec
+        pspec = TWOPI*npspec/L
+        pspecSQ = pspec@pspec
+        omspec = np.sqrt(pspecSQ+mspec**2)
+        E2 = E-omspec
+        P2 = TWOPI*nP2/L
+        E2SQ = E2**2
+        P2SQ = P2@P2
+        E2CMSQ = E2SQ-P2SQ
+        if (E2CMSQ < 0.0) or (E2 < 0.0):
+            return 0.0
+        gamSQ = E2SQ/E2CMSQ
+        if m1 == m2:
+            qSQ = E2CMSQ/4.0-m1**2
+            qSQ_dimless = (L**2)*(qSQ)/FOURPI2
+        else:
+            qSQ = (E2CMSQ**2-2.0*E2CMSQ*m1**2
+                   + m1**4-2.0*E2CMSQ*m2**2-2.0*m1**2*m2**2+m2**4)\
+                / (4.0*E2CMSQ)
+            qSQ_dimless = (L**2)*(qSQ)/FOURPI2
+        E2CM = np.sqrt(E2CMSQ)
+        gamma = np.sqrt(gamSQ)
+        alpha_mass = 0.5*(1.+(m1**2-m2**2)/E2CMSQ)
+        Htmp = BKFunctions.H(E2CMSQ, m1+m2, alpha, beta)
+        pre = -Htmp*2.0/(L*np.sqrt(PI)*16.0*PI*E2CM*gamma)
+        if ell1 == ell2 and mazi1 == mazi2:
+            ell = ell1
+            pSQ = qSQ
+            IPV = IPV_function(qSQ, *IPV_parameters)
+            include_H_in_IPV = QC_IMPL_DEFAULTS['include_H_in_IPV']
+            if 'include_H_in_IPV' in qc_impl:
+                include_H_in_IPV = qc_impl['include_H_in_IPV']
+            if include_H_in_IPV:
+                partial_shift = IPV/pSQ**(ell)*np.sqrt(pSQ+1.0)
+            else:
+                raise ValueError("include_H_in_IPV must be True")
+            smarter_q_rescale = QC_IMPL_DEFAULTS['smarter_q_rescale']
+            if 'smarter_q_rescale' in qc_impl:
+                smarter_q_rescale = qc_impl['smarter_q_rescale']
+            if smarter_q_rescale:
+                IPV_shift = 0.5*np.sqrt(PI)*L*gamma*partial_shift\
+                    * np.abs(pSQ**(ell))
+            else:
+                IPV_shift = 0.5*np.sqrt(PI)*L*gamma*partial_shift
+        hermitian = QC_IMPL_DEFAULTS['hermitian']
+        if 'hermitian' in qc_impl:
+            hermitian = qc_impl['hermitian']
+        if hermitian:
+            pre = pre/(2.0*omspec)
+        smarter_q_rescale = QC_IMPL_DEFAULTS['smarter_q_rescale']
+        if 'smarter_q_rescale' in qc_impl:
+            smarter_q_rescale = qc_impl['smarter_q_rescale']
+        if smarter_q_rescale:
+            pre = pre*(FOURPI2/L**2)**ell1
+        return pre*(QCFunctions.getZ_single_entry(nP2, qSQ_dimless, gamSQ,
+                                                  alpha_mass, C1cut, alphaKSS,
+                                                  ell1, mazi1,
+                                                  ell2, mazi2, qc_impl)
+                    - IPV_shift)
 
     def getF_array(E, nP, L, m1, m2, m3, tbks_entry, slice_entry,
                    ell1, ell2, alpha, beta, C1cut, alphaKSS, qc_impl, ts):

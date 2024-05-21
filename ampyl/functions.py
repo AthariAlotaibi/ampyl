@@ -1541,6 +1541,7 @@ class QCFunctions:
                                                   ell2, mazi2, qc_impl)
                     - IPV_shift)
 
+    @staticmethod
     def getF_array(E, nP, L, m1, m2, m3, tbks_entry, slice_entry,
                    ell1, ell2, alpha, beta, C1cut, alphaKSS, qc_impl, ts):
         """
@@ -1773,6 +1774,7 @@ class QCFunctions:
                               f"{bcolors.ENDC}")
             return pre*16.0*PI*ECM/(pcotdelta+qH_IPV)
 
+    @staticmethod
     def getK_array(E, nP, L, m1, m2, m3,
                    tbks_entry,
                    slice_entry,
@@ -1782,7 +1784,7 @@ class QCFunctions:
                    alpha, beta,
                    qc_impl, ts):
         """
-        Get K, numpy accelerated.
+        Get K array.
 
         See FiniteVolumeSetup for documentation of possible keys included in
         qc_impl.

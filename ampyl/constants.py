@@ -48,7 +48,8 @@ QC_IMPL_DEFAULTS = {'hermitian': True,
                     'reduce_size': True,
                     'populate_interp_zeros': False,
                     'use_hard_cutoff_zero': False,
-                    'use_hard_cutoff_one': False}
+                    'use_hard_cutoff_one': False,
+                    'include_H_in_IPV': True}
 PI = np.pi
 TWOPI = 2.*PI
 FOURPI2 = 4.0*PI**2

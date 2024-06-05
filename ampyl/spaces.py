@@ -828,120 +828,6 @@ class QCIndexSpace:
             raise ValueError("verbosity must be an int")
         self._verbosity = verbosity
 
-    def populate(self):
-        """Populate the index space."""
-        ell_max = 4
-        half_spin = False
-        for sc in self.fcs.sc_list_sorted:
-            if np.max(sc.ell_set) > ell_max:
-                ell_max = np.max(sc.ell_set)
-        for nic in self.fcs.ni_list:
-            spins = nic.spins
-            for spin in spins:
-                spin_int = int(spin)
-                if (np.abs(spin-spin_int) > EPSILON10
-                   and np.abs(spin-0.5) < EPSILON10):
-                    warnings.warn(f"\n{bcolors.WARNING}"
-                                  "Spin half detected; certain objects may "
-                                  "not be supported"
-                                  f"{bcolors.ENDC}", stacklevel=2)
-                    half_spin = True
-                elif np.abs(spin-spin_int) > EPSILON10:
-                    raise ValueError("only integer spin and (partially spin "
-                                     "half) currently supported")
-            maxspin = int(np.max(nic.spins))
-            if maxspin > ell_max:
-                ell_max = maxspin
-        self.group = Groups(ell_max=ell_max, half_spin=half_spin)
-        self.half_spin = half_spin
-
-        if self.nPSQ != 0:
-            if self.verbosity >= 2:
-                print(f"{bcolors.OKGREEN}"
-                      "nPSQ is nonzero, grid will be used"
-                      f"{bcolors.ENDC}")
-            [self.Evals, self.Lvals] = self._get_grid_nonzero_nP(self.Emax,
-                                                                 self.Lmax,
-                                                                 self.deltaE,
-                                                                 self.deltaL)
-            if self.verbosity >= 2:
-                print(f"{bcolors.OKGREEN}"
-                      f"Grid for non-zero nP:\n"
-                      f"Evals = {self.Evals}\n"
-                      f"Lvals = {self.Lvals}")
-        else:
-            self.Lvals = None
-            self.Evals = None
-
-        parametrization_structure = []
-        two_param_struc_tmp = []
-        for sc in self.fcs.sc_list_sorted:
-            tmp_entry = []
-            for n_params_tmp in sc.n_params_set:
-                tmp_entry.append([0.0]*n_params_tmp)
-            two_param_struc_tmp.append(tmp_entry)
-        parametrization_structure.append(two_param_struc_tmp)
-        three_param_struc_tmp = []
-        for _ in self.tbis.kdf_functions:
-            three_param_struc_tmp = three_param_struc_tmp+[0.0]
-        parametrization_structure.append(three_param_struc_tmp)
-        self.param_structure = parametrization_structure
-
-        self.populate_all_nvec_arr()
-        self.ell_sets = self._get_ell_sets()
-        self.populate_all_kellm_spaces()
-        self.populate_all_proj_dicts()
-        self.proj_dict = self.group.get_full_proj_dict(qcis=self)
-        self.populate_all_nonint_data()
-        self.populate_nonint_proj_dict()
-        self.populate_nonint_multiplicities()
-
-    def populate_nonint_proj_dict(self):
-        """Populate the non-interacting projection dictionary."""
-        nonint_proj_dict = []
-        for nic_index in range(len(self.fcs.ni_list)):
-            n_particles = self.fcs.ni_list[nic_index].n_particles
-            two_particles = (n_particles == 2)
-            three_particles = (n_particles == 3)
-            first_spin = self.fcs.ni_list[nic_index].spins[0]
-            if two_particles:
-                isospin_channel = self.fcs.ni_list[nic_index].isospin_channel
-                nonint_proj_dict\
-                    .append(self.group.get_noninttwo_proj_dict(
-                        qcis=self, nic_index=nic_index,
-                        isospin_channel=isospin_channel))
-            elif three_particles and first_spin == 0.:
-                nonint_proj_dict.append(
-                    self.group.get_nonint_proj_dict(qcis=self,
-                                                    nic_index=nic_index))
-            elif three_particles and first_spin == 1.:
-                nonint_proj_dict.append(
-                    self.group.
-                    get_nonint_proj_dict_vector(qcis=self,
-                                                nic_index=nic_index))
-            elif three_particles and self.half_spin:
-                nonint_proj_dict.append(
-                    self.group.get_nonint_proj_dict_half(qcis=self,
-                                                         nic_index=nic_index))
-            else:
-                raise ValueError("only two and three particles with certain "
-                                 "spin combinations are supported by "
-                                 "nonint_proj_dict")
-        self.nonint_proj_dict = nonint_proj_dict
-
-    def _get_grid_nonzero_nP(self, Emax, Lmax, deltaE, deltaL):
-        Lmin = np.mod(Lmax-L_GRID_SHIFT, deltaL)+L_GRID_SHIFT
-        Emin = np.mod(Emax-E_GRID_SHIFT, deltaE)+E_GRID_SHIFT
-        Lvals = np.arange(Lmin, Lmax+EPSILON4, deltaL)
-        Evals = np.arange(Emin, Emax+EPSILON4, deltaE)
-        if np.abs(Lvals[-1] - Lmax) > EPSILON20:
-            Lvals = np.append(Lvals, Lmax)
-        if np.abs(Evals[-1] - Emax) > EPSILON20:
-            Evals = np.append(Evals, Emax)
-        Lvals = Lvals[::-1]
-        Evals = Evals[::-1]
-        return [Evals, Lvals]
-
     @property
     def nP(self):
         """Total momentum in the finite-volume frame."""
@@ -996,36 +882,124 @@ class QCIndexSpace:
         self.tbks_list = tbks_list
         self._fcs = fcs
 
-    def _get_nPspecmax(self, three_slice_index):
-        sc = self.fcs.sc_list_sorted[
-            self.fcs.slices_by_three_masses[three_slice_index][0]]
-        m_spec = sc.masses_indexed[0]
-        Emax = self.Emax
-        EmaxSQ = Emax**2
-        nPSQ = self.nPSQ
-        Lmax = self.Lmax
-        EminSQ = self.tbis.Emin**2
-        if (EminSQ != 0.0):
-            if nPSQ == 0:
-                nPspecmax = (Lmax*np.sqrt(
-                    Emax**4+(EminSQ-m_spec**2)**2-2.*Emax**2*(EminSQ+m_spec**2)
-                    ))/(2.*Emax*TWOPI)
-                return nPspecmax
-            else:
-                raise ValueError("simultaneous nonzero nP and Emin not"
-                                 + " supported")
+    @property
+    def ell_sets(self):
+        """Angular-momentum value sets."""
+        return self._ell_sets
+
+    @ell_sets.setter
+    def ell_sets(self, ell_sets):
+        """Set angular-momentum value sets."""
+        self._ell_sets = ell_sets
+        ellm_sets = []
+        for ell_set in ell_sets:
+            ellm_set = []
+            for ell in ell_set:
+                for mazi in range(-ell, ell+1):
+                    ellm_set.append((ell, mazi))
+            ellm_sets.append(ellm_set)
+        self.ellm_sets = ellm_sets
+
+    def populate(self):
+        """Populate the index space."""
+        ell_max, half_spin = self.get_ell_and_spin()
+        self.group = Groups(ell_max=ell_max, half_spin=half_spin)
+        self.half_spin = half_spin
+        self.Evals, self.Lvals = self.get_Evals_Lvals()
+        self.param_structure = self.get_param_structure()
+        self.populate_all_nvec_arr()
+        self.ell_sets = self._get_ell_sets()
+        self.populate_all_kellm_spaces()
+        self.populate_all_proj_dicts()
+        self.proj_dict = self.group.get_full_proj_dict(qcis=self)
+        self.populate_all_nonint_data()
+        self.populate_nonint_proj_dict()
+        self.populate_nonint_multiplicities()
+
+    def get_ell_and_spin(self):
+        ell_max = 4
+        half_spin = False
+        for sc in self.fcs.sc_list_sorted:
+            if np.max(sc.ell_set) > ell_max:
+                ell_max = np.max(sc.ell_set)
+        for nic in self.fcs.ni_list:
+            spins = nic.spins
+            for spin in spins:
+                spin_int = int(spin)
+                if (np.abs(spin-spin_int) > EPSILON10
+                   and np.abs(spin-0.5) < EPSILON10):
+                    warnings.warn(f"\n{bcolors.WARNING}"
+                                  "Spin half detected; certain objects may "
+                                  "not be supported"
+                                  f"{bcolors.ENDC}", stacklevel=2)
+                    half_spin = True
+                elif np.abs(spin-spin_int) > EPSILON10:
+                    raise ValueError("only integer spin and (partially spin "
+                                     "half) currently supported")
+            max_spin = int(np.max(nic.spins))
+            if max_spin > ell_max:
+                ell_max = max_spin
+        return ell_max, half_spin
+
+    def get_Evals_Lvals(self):
+        if self.nPSQ != 0:
+            if self.verbosity >= 2:
+                print(f"{bcolors.OKGREEN}"
+                      "nPSQ is nonzero, grid will be used"
+                      f"{bcolors.ENDC}")
+            [Evals, Lvals] = self._get_grid_nonzero_nP(self.Emax, self.Lmax,
+                                                       self.deltaE,
+                                                       self.deltaL)
+            if self.verbosity >= 2:
+                print(f"{bcolors.OKGREEN}"
+                      f"Grid for non-zero nP:\n"
+                      f"Evals = {Evals}\n"
+                      f"Lvals = {Lvals}")
         else:
-            if nPSQ == 0:
-                nPspecmax = Lmax*(EmaxSQ-m_spec**2)/(2.0*TWOPI*Emax)
-                return nPspecmax
+            Evals = None
+            Lvals = None
+        return Evals, Lvals
+
+    def _get_grid_nonzero_nP(self, Emax, Lmax, deltaE, deltaL):
+        Lmin = np.mod(Lmax-L_GRID_SHIFT, deltaL)+L_GRID_SHIFT
+        Emin = np.mod(Emax-E_GRID_SHIFT, deltaE)+E_GRID_SHIFT
+        Lvals = np.arange(Lmin, Lmax+EPSILON4, deltaL)
+        Evals = np.arange(Emin, Emax+EPSILON4, deltaE)
+        if np.abs(Lvals[-1] - Lmax) > EPSILON20:
+            Lvals = np.append(Lvals, Lmax)
+        if np.abs(Evals[-1] - Emax) > EPSILON20:
+            Evals = np.append(Evals, Emax)
+        Lvals = Lvals[::-1]
+        Evals = Evals[::-1]
+        return [Evals, Lvals]
+
+    def get_param_structure(self):
+        parametrization_structure = []
+        two_param_struc_tmp = []
+        for sc in self.fcs.sc_list_sorted:
+            tmp_entry = []
+            for n_params_tmp in sc.n_params_set:
+                tmp_entry.append([0.0]*n_params_tmp)
+            two_param_struc_tmp.append(tmp_entry)
+        parametrization_structure.append(two_param_struc_tmp)
+        three_param_struc_tmp = []
+        for _ in self.tbis.kdf_functions:
+            three_param_struc_tmp = three_param_struc_tmp+[0.0]
+        parametrization_structure.append(three_param_struc_tmp)
+        return parametrization_structure
+
+    def populate_all_nvec_arr(self):
+        """Populate all nvec_arr slots."""
+        if self.n_two_channels > 0:
+            slot_index = 0
+            self.populate_nvec_arr_slot(slot_index,
+                                        three_particle_channel=False)
+        for three_slice_index in range(self.fcs.n_three_slices):
+            if self.n_two_channels > 0:
+                slot_index = three_slice_index+1
             else:
-                nPmag = np.sqrt(nPSQ)
-                nPspecmax = (FOURPI2*nPmag*(
-                    Lmax**2*(EmaxSQ+m_spec**2)-FOURPI2*nPSQ
-                    )+np.sqrt(EmaxSQ*FOURPI2*Lmax**2*(
-                        Lmax**2*(-EmaxSQ+m_spec**2)+FOURPI2*nPSQ
-                        )**2))/(2.*FOURPI2*(EmaxSQ*Lmax**2-FOURPI2*nPSQ))
-                return nPspecmax
+                slot_index = three_slice_index
+            self.populate_nvec_arr_slot(slot_index)
 
     def populate_nvec_arr_slot(self, slot_index, three_particle_channel=True):
         """Populate a given nvec_arr slot."""
@@ -1058,6 +1032,39 @@ class QCIndexSpace:
         else:
             raise ValueError("half spin not yet supported for two-particle "
                              "channels")
+
+    def _populate_spin_zero_momentum(self, slot_index, nPspecmax):
+        warnings.warn(f"\n{bcolors.WARNING}"
+                      f"Populate for spin not yet implemented"
+                      f"{bcolors.ENDC}", stacklevel=2)
+        pass
+
+    def _populate_slot_zero_momentum(self, slot_index, nPspecmax):
+        if isinstance(self.tbks_list[slot_index], list):
+            tbks_tmp = self.tbks_list[slot_index][0]
+            if self.verbosity >= 2:
+                print(f"{bcolors.OKGREEN}"
+                      "self.tbks_list[slot_index] is a list, "
+                      "taking first entry"
+                      f"{bcolors.ENDC}")
+        else:
+            tbks_tmp = self.tbks_list[slot_index]
+            if self.verbosity >= 2:
+                print(f"{bcolors.OKGREEN}"
+                      "self.tbks_list[slot_index] is not a list"
+                      f"{bcolors.ENDC}")
+        tbks_copy = deepcopy(tbks_tmp)
+        tbks_copy.verbosity = self.verbosity
+        self.tbks_list[slot_index] = [tbks_copy]
+        nPspec = nPspecmax
+        if self.verbosity >= 2:
+            print(f"{bcolors.OKGREEN}"
+                  "Populating nvec array, slot_index = "
+                  f"{slot_index}, nPspecmax = {nPspecmax}"
+                  f"{bcolors.ENDC}")
+        while nPspec > 0:
+            nPspec = self._populate_nP_iteration(slot_index, tbks_tmp, nPspec)
+        self.tbks_list[slot_index] = self.tbks_list[slot_index][:-1]
 
     def _populate_slot_nonzero_momentum(self, slot_index, three_slice_index,
                                         nPspecmax):
@@ -1124,119 +1131,12 @@ class QCIndexSpace:
         self.tbks_list[slot_index] = self.tbks_list[slot_index]\
             + [tbks_copy]
 
-    def _populate_slot_zero_momentum(self, slot_index, nPspecmax):
-        if isinstance(self.tbks_list[slot_index], list):
-            tbks_tmp = self.tbks_list[slot_index][0]
-            if self.verbosity >= 2:
-                print(f"{bcolors.OKGREEN}"
-                      "self.tbks_list[slot_index] is a list, "
-                      "taking first entry"
-                      f"{bcolors.ENDC}")
-        else:
-            tbks_tmp = self.tbks_list[slot_index]
-            if self.verbosity >= 2:
-                print(f"{bcolors.OKGREEN}"
-                      "self.tbks_list[slot_index] is not a list"
-                      f"{bcolors.ENDC}")
-        tbks_copy = deepcopy(tbks_tmp)
-        tbks_copy.verbosity = self.verbosity
-        self.tbks_list[slot_index] = [tbks_copy]
-        nPspec = nPspecmax
-        if self.verbosity >= 2:
-            print(f"{bcolors.OKGREEN}"
-                  "Populating nvec array, slot_index = "
-                  f"{slot_index}, nPspecmax = {nPspecmax}"
-                  f"{bcolors.ENDC}")
-        while nPspec > 0:
-            nPspec = self._populate_nP_iteration(slot_index, tbks_tmp, nPspec)
-        self.tbks_list[slot_index] = self.tbks_list[slot_index][:-1]
-
-    def _populate_spin_zero_momentum(self, slot_index, nPspecmax):
-        warnings.warn(f"\n{bcolors.WARNING}"
-                      f"Populate for spin not yet implemented"
-                      f"{bcolors.ENDC}", stacklevel=2)
-        pass
-
-    def _populate_nP_iteration(self, slot_index, tbks_tmp, nPspec):
-        if self.verbosity >= 2:
-            print(f"{bcolors.OKGREEN}"
-                  "Populating nvec array, nPspec**2 = "
-                  f"{int(nPspec**2)}"
-                  f"{bcolors.ENDC}")
-        rng = range(-int(nPspec), int(nPspec)+1)
-        mesh = np.meshgrid(*([rng]*3))
-        nvec_arr = np.vstack([y.flat for y in mesh]).T
-        carr = (nvec_arr*nvec_arr).sum(1) > nPspec**2
-        nvec_arr = np.delete(nvec_arr, np.where(carr), axis=0)
-        self.tbks_list[slot_index][-1].nvec_arr = nvec_arr
-        if self.verbosity >= 2:
-            print(f"{bcolors.OKGREEN}"
-                  f"Values of ThreeBodyKinematicSpace at slot {slot_index}:\n"
-                  f"{self.tbks_list[slot_index][-1]}"
-                  f"{bcolors.ENDC}")
-        tbks_copy = deepcopy(tbks_tmp)
-        tbks_copy.verbosity = self.verbosity
-        self.tbks_list[slot_index] =\
-            self.tbks_list[slot_index]+[tbks_copy]
-        nPspecSQ = nPspec**2-1.0
-        if nPspecSQ >= 0.0:
-            nPspec = np.sqrt(nPspecSQ)
-        else:
-            nPspec = -1.0
-        return nPspec
-
-    def populate_all_nvec_arr(self):
-        """Populate all nvec_arr slots."""
-        if self.n_two_channels > 0:
-            slot_index = 0
-            self.populate_nvec_arr_slot(slot_index,
-                                        three_particle_channel=False)
-        for three_slice_index in range(self.fcs.n_three_slices):
-            if self.n_two_channels > 0:
-                slot_index = three_slice_index+1
-            else:
-                slot_index = three_slice_index
-            self.populate_nvec_arr_slot(slot_index)
-
     def _get_ell_sets(self):
         ell_sets = [[]]
         for sc_index in range(self.n_channels):
             ell_set = self.fcs.sc_list_sorted[sc_index].ell_set
             ell_sets = ell_sets+[ell_set]
         return ell_sets[1:]
-
-    @property
-    def ell_sets(self):
-        """Angular-momentum value sets."""
-        return self._ell_sets
-
-    @ell_sets.setter
-    def ell_sets(self, ell_sets):
-        """Set angular-momentum value sets."""
-        self._ell_sets = ell_sets
-        ellm_sets = []
-        for ell_set in ell_sets:
-            ellm_set = []
-            for ell in ell_set:
-                for mazi in range(-ell, ell+1):
-                    ellm_set.append((ell, mazi))
-            ellm_sets.append(ellm_set)
-        self.ellm_sets = ellm_sets
-
-    def _get_three_slice_index(self, sc_index):
-        three_channel_max = self.fcs.slices_by_three_masses[-1][-1]-1
-        if ((self.n_two_channels == 0) and (sc_index > three_channel_max)):
-            raise ValueError(f"using cindex = {sc_index} with three_slices = "
-                             f"{self.fcs.slices_by_three_masses} "
-                             f"and (no two-particle channels) "
-                             f"is not allowed")
-        slice_index = 0
-        for three_slice in self.fcs.slices_by_three_masses:
-            if sc_index > three_slice[1]:
-                slice_index = slice_index+1
-        if self.n_two_channels > 0:
-            slice_index = slice_index+1
-        return slice_index
 
     def populate_all_kellm_spaces(self):
         """Populate all kellm spaces."""
@@ -1326,6 +1226,279 @@ class QCIndexSpace:
                 + [sc_proj_dict_channel_by_shell]
         self.sc_proj_dicts = sc_proj_dicts
         self.sc_proj_dicts_by_shell = sc_proj_dicts_by_shell[1:]
+
+    def populate_all_nonint_data(self):
+        """Populate all non-interacting data."""
+        nvecset_arr_all = []
+        nvecset_SQs_all = []
+        nvecset_reps_all = []
+        nvecset_SQreps_all = []
+        nvecset_inds_all = []
+        nvecset_counts_all = []
+        nvecset_batched_all = []
+        nvecset_ident_all = []
+        nvecset_ident_SQs_all = []
+        nvecset_ident_reps_all = []
+        nvecset_ident_SQreps_all = []
+        nvecset_ident_inds_all = []
+        nvecset_ident_counts_all = []
+        nvecset_ident_batched_all = []
+        ni_list = self.fcs.ni_list
+        for fc in ni_list:
+            if fc.n_particles == 3:
+                [m1, m2, m3, Emax, nP, Lmax, nvec_cutoff, nvecs]\
+                    = self._load_ni_data_three(fc)
+                nvecset_arr = []
+                nmin = nvec_cutoff
+                nmax = nvec_cutoff
+                for n1 in nvecs:
+                    for n2 in nvecs:
+                        [nvecset_arr, nmin, nmax]\
+                            = self._get_nvecset_arr_three(nvecset_arr,
+                                                          nmin, nmax,
+                                                          m1, m2, m3,
+                                                          Emax, nP, Lmax,
+                                                          n1, n2)
+                nvecset_arr = np.array(nvecset_arr)
+                [nvecset_arr, nvecset_SQs]\
+                    = self._square_and_sort_three(nvecset_arr, nmin, nmax,
+                                                  m1, m2, m3, Lmax)
+                [nvecset_ident, nvecset_ident_SQs]\
+                    = self._get_nvecset_ident_three(nvecset_arr, nvecset_SQs)
+                [nvecset_reps, nvecset_ident_reps,
+                 nvecset_SQreps, nvecset_ident_SQreps,
+                 nvecset_inds, nvecset_ident_inds,
+                 nvecset_counts, nvecset_ident_counts,
+                 nvecset_batched, nvecset_ident_batched]\
+                    = self._reps_and_batches_three(nvecset_arr, nvecset_SQs,
+                                                   nvecset_ident,
+                                                   nvecset_ident_SQs,
+                                                   nP)
+            else:
+                [m1, m2, Emax, nP, Lmax, nvec_cutoff, nvecs]\
+                    = self._load_ni_data_two(fc)
+                nvecset_arr = []
+                nmin = nvec_cutoff
+                nmax = nvec_cutoff
+                for n1 in nvecs:
+                    [nvecset_arr, nmin, nmax]\
+                        = self._get_nvecset_arr_two(nvecset_arr, nmin, nmax,
+                                                    m1, m2, Emax, nP, Lmax, n1)
+                nvecset_arr = np.array(nvecset_arr)
+                [nvecset_arr, nvecset_SQs]\
+                    = self._square_and_sort_two(nvecset_arr, nmin, nmax,
+                                                m1, m2, Lmax)
+                [nvecset_ident, nvecset_ident_SQs]\
+                    = self._get_nvecset_ident_two(nvecset_arr, nvecset_SQs)
+                [nvecset_reps, nvecset_ident_reps,
+                 nvecset_SQreps, nvecset_ident_SQreps,
+                 nvecset_inds, nvecset_ident_inds,
+                 nvecset_counts, nvecset_ident_counts,
+                 nvecset_batched, nvecset_ident_batched]\
+                    = self._reps_and_batches_two(nvecset_arr, nvecset_SQs,
+                                                 nvecset_ident,
+                                                 nvecset_ident_SQs, nP)
+
+            nvecset_arr_all = nvecset_arr_all+[nvecset_arr]
+            nvecset_SQs_all = nvecset_SQs_all+[nvecset_SQs]
+            nvecset_reps_all = nvecset_reps_all+[nvecset_reps]
+            nvecset_SQreps_all = nvecset_SQreps_all+[nvecset_SQreps]
+            nvecset_inds_all = nvecset_inds_all+[nvecset_inds]
+            nvecset_counts_all = nvecset_counts_all+[nvecset_counts]
+            nvecset_batched_all = nvecset_batched_all+[nvecset_batched]
+
+            nvecset_ident_all = nvecset_ident_all\
+                + [nvecset_ident]
+            nvecset_ident_SQs_all = nvecset_ident_SQs_all+[nvecset_ident_SQs]
+            nvecset_ident_reps_all = nvecset_ident_reps_all\
+                + [nvecset_ident_reps]
+            nvecset_ident_SQreps_all = nvecset_ident_SQreps_all\
+                + [nvecset_ident_SQreps]
+            nvecset_ident_inds_all = nvecset_ident_inds_all\
+                + [nvecset_ident_inds]
+            nvecset_ident_counts_all = nvecset_ident_counts_all\
+                + [nvecset_ident_counts]
+            nvecset_ident_batched_all = nvecset_ident_batched_all\
+                + [nvecset_ident_batched]
+        self.nvecset_arr = nvecset_arr_all
+        self.nvecset_SQs = nvecset_SQs_all
+        self.nvecset_reps = nvecset_reps_all
+        self.nvecset_SQreps = nvecset_SQreps_all
+        self.nvecset_inds = nvecset_inds_all
+        self.nvecset_counts = nvecset_counts_all
+        self.nvecset_batched = nvecset_batched_all
+
+        self.nvecset_ident = nvecset_ident_all
+        self.nvecset_ident_SQs = nvecset_ident_SQs_all
+        self.nvecset_ident_reps = nvecset_ident_reps_all
+        self.nvecset_ident_SQreps = nvecset_ident_SQreps_all
+        self.nvecset_ident_inds = nvecset_ident_inds_all
+        self.nvecset_ident_counts = nvecset_ident_counts_all
+        self.nvecset_ident_batched = nvecset_ident_batched_all
+
+    def populate_nonint_proj_dict(self):
+        """Populate the non-interacting projection dictionary."""
+        nonint_proj_dict = []
+        for nic_index in range(len(self.fcs.ni_list)):
+            n_particles = self.fcs.ni_list[nic_index].n_particles
+            two_particles = (n_particles == 2)
+            three_particles = (n_particles == 3)
+            first_spin = self.fcs.ni_list[nic_index].spins[0]
+            if two_particles:
+                isospin_channel = self.fcs.ni_list[nic_index].isospin_channel
+                nonint_proj_dict\
+                    .append(self.group.get_noninttwo_proj_dict(
+                        qcis=self, nic_index=nic_index,
+                        isospin_channel=isospin_channel))
+            elif three_particles and first_spin == 0.:
+                nonint_proj_dict.append(
+                    self.group.get_nonint_proj_dict(qcis=self,
+                                                    nic_index=nic_index))
+            elif three_particles and first_spin == 1.:
+                nonint_proj_dict.append(
+                    self.group.
+                    get_nonint_proj_dict_vector(qcis=self,
+                                                nic_index=nic_index))
+            elif three_particles and self.half_spin:
+                nonint_proj_dict.append(
+                    self.group.get_nonint_proj_dict_half(qcis=self,
+                                                         nic_index=nic_index))
+            else:
+                raise ValueError("only two and three particles with certain "
+                                 "spin combinations are supported by "
+                                 "nonint_proj_dict")
+        self.nonint_proj_dict = nonint_proj_dict
+
+    def populate_nonint_multiplicities(self):
+        """Populate the non-interacting multiplicities."""
+        if len(self.fcs.fc_list) == 0 or self.fcs.fc_list[0].isospin is None:
+            self.nonint_multiplicities = None
+            return
+        nPSQ = self.nPSQ
+        isospin_int = int(self.fcs.fc_list[0].isospin)
+        group = self.group
+        if nPSQ == 0:
+            group_str = 'OhP_'
+        elif nPSQ == 1:
+            group_str = 'Dic4_'
+        elif nPSQ == 2:
+            group_str = 'Dic2_'
+        else:
+            raise ValueError("nPSQ not supported")
+        nonint_multiplicities = []
+        for cindex in range(len(self.fcs.ni_list)):
+            nonint_multis_channel_dict = {}
+            for key_best_irreps in self.proj_dict['best_irreps']:
+                irrep = key_best_irreps[0]
+                irrep_dim = group.chardict[group_str+irrep].shape[0]
+                nonint_proj_dict_entry = self.nonint_proj_dict[cindex]
+                if cindex == 0:
+                    n_shells = len(self.nvecset_ident_SQreps[cindex])
+                else:
+                    n_shells = len(self.nvecset_SQreps[cindex])
+                channel_multis_summary_list = []
+                for shell_index in range(n_shells):
+                    for key in nonint_proj_dict_entry[(shell_index,
+                                                       isospin_int)]:
+                        if key == key_best_irreps:
+                            if cindex == 0:
+                                nSQs = self.nvecset_ident_SQreps[
+                                    cindex][shell_index]
+                            else:
+                                nSQs = self.nvecset_SQreps[
+                                    cindex][shell_index]
+                            multi = int(
+                                nonint_proj_dict_entry[
+                                    (shell_index, isospin_int)][key].shape[1]
+                                / irrep_dim)
+                            entry = [*nSQs, nPSQ, multi]
+                            channel_multis_summary_list.append(entry)
+                            # if cindex == 1:
+                            #     entry = [nSQs[1], nSQs[0], nPSQ, multi]
+                            #     channel_multis_summary_list.append(entry)
+                            #     warnings.warn(f"\n{bcolors.WARNING}"
+                            #                   "Assuming a non-degenerate "
+                            #                   "two-particle channel."
+                            #                   f"{bcolors.ENDC}",
+                            #                   stacklevel=2)
+                nonint_multis_channel_dict[key_best_irreps]\
+                    = channel_multis_summary_list
+            nonint_multiplicities.append(nonint_multis_channel_dict)
+        self.nonint_multiplicities = nonint_multiplicities
+
+    def _get_nPspecmax(self, three_slice_index):
+        sc = self.fcs.sc_list_sorted[
+            self.fcs.slices_by_three_masses[three_slice_index][0]]
+        m_spec = sc.masses_indexed[0]
+        Emax = self.Emax
+        EmaxSQ = Emax**2
+        nPSQ = self.nPSQ
+        Lmax = self.Lmax
+        EminSQ = self.tbis.Emin**2
+        if (EminSQ != 0.0):
+            if nPSQ == 0:
+                nPspecmax = (Lmax*np.sqrt(
+                    Emax**4+(EminSQ-m_spec**2)**2-2.*Emax**2*(EminSQ+m_spec**2)
+                    ))/(2.*Emax*TWOPI)
+                return nPspecmax
+            else:
+                raise ValueError("simultaneous nonzero nP and Emin not"
+                                 + " supported")
+        else:
+            if nPSQ == 0:
+                nPspecmax = Lmax*(EmaxSQ-m_spec**2)/(2.0*TWOPI*Emax)
+                return nPspecmax
+            else:
+                nPmag = np.sqrt(nPSQ)
+                nPspecmax = (FOURPI2*nPmag*(
+                    Lmax**2*(EmaxSQ+m_spec**2)-FOURPI2*nPSQ
+                    )+np.sqrt(EmaxSQ*FOURPI2*Lmax**2*(
+                        Lmax**2*(-EmaxSQ+m_spec**2)+FOURPI2*nPSQ
+                        )**2))/(2.*FOURPI2*(EmaxSQ*Lmax**2-FOURPI2*nPSQ))
+                return nPspecmax
+
+    def _populate_nP_iteration(self, slot_index, tbks_tmp, nPspec):
+        if self.verbosity >= 2:
+            print(f"{bcolors.OKGREEN}"
+                  "Populating nvec array, nPspec**2 = "
+                  f"{int(nPspec**2)}"
+                  f"{bcolors.ENDC}")
+        rng = range(-int(nPspec), int(nPspec)+1)
+        mesh = np.meshgrid(*([rng]*3))
+        nvec_arr = np.vstack([y.flat for y in mesh]).T
+        carr = (nvec_arr*nvec_arr).sum(1) > nPspec**2
+        nvec_arr = np.delete(nvec_arr, np.where(carr), axis=0)
+        self.tbks_list[slot_index][-1].nvec_arr = nvec_arr
+        if self.verbosity >= 2:
+            print(f"{bcolors.OKGREEN}"
+                  f"Values of ThreeBodyKinematicSpace at slot {slot_index}:\n"
+                  f"{self.tbks_list[slot_index][-1]}"
+                  f"{bcolors.ENDC}")
+        tbks_copy = deepcopy(tbks_tmp)
+        tbks_copy.verbosity = self.verbosity
+        self.tbks_list[slot_index] =\
+            self.tbks_list[slot_index]+[tbks_copy]
+        nPspecSQ = nPspec**2-1.0
+        if nPspecSQ >= 0.0:
+            nPspec = np.sqrt(nPspecSQ)
+        else:
+            nPspec = -1.0
+        return nPspec
+
+    def _get_three_slice_index(self, sc_index):
+        three_channel_max = self.fcs.slices_by_three_masses[-1][-1]-1
+        if ((self.n_two_channels == 0) and (sc_index > three_channel_max)):
+            raise ValueError(f"using cindex = {sc_index} with three_slices = "
+                             f"{self.fcs.slices_by_three_masses} "
+                             f"and (no two-particle channels) "
+                             f"is not allowed")
+        slice_index = 0
+        for three_slice in self.fcs.slices_by_three_masses:
+            if sc_index > three_slice[1]:
+                slice_index = slice_index+1
+        if self.n_two_channels > 0:
+            slice_index = slice_index+1
+        return slice_index
 
     def get_tbks_sub_indices(self, E, L):
         """Get the indices of the relevant three-body kinematics spaces."""
@@ -1844,115 +2017,6 @@ class QCIndexSpace:
                 nvecset_counts, nvecset_ident_counts,
                 nvecset_batched, nvecset_ident_batched]
 
-    def populate_all_nonint_data(self):
-        """Populate all non-interacting data."""
-        nvecset_arr_all = []
-        nvecset_SQs_all = []
-        nvecset_reps_all = []
-        nvecset_SQreps_all = []
-        nvecset_inds_all = []
-        nvecset_counts_all = []
-        nvecset_batched_all = []
-        nvecset_ident_all = []
-        nvecset_ident_SQs_all = []
-        nvecset_ident_reps_all = []
-        nvecset_ident_SQreps_all = []
-        nvecset_ident_inds_all = []
-        nvecset_ident_counts_all = []
-        nvecset_ident_batched_all = []
-        ni_list = self.fcs.ni_list
-        for fc in ni_list:
-            if fc.n_particles == 3:
-                [m1, m2, m3, Emax, nP, Lmax, nvec_cutoff, nvecs]\
-                    = self._load_ni_data_three(fc)
-                nvecset_arr = []
-                nmin = nvec_cutoff
-                nmax = nvec_cutoff
-                for n1 in nvecs:
-                    for n2 in nvecs:
-                        [nvecset_arr, nmin, nmax]\
-                            = self._get_nvecset_arr_three(nvecset_arr,
-                                                          nmin, nmax,
-                                                          m1, m2, m3,
-                                                          Emax, nP, Lmax,
-                                                          n1, n2)
-                nvecset_arr = np.array(nvecset_arr)
-                [nvecset_arr, nvecset_SQs]\
-                    = self._square_and_sort_three(nvecset_arr, nmin, nmax,
-                                                  m1, m2, m3, Lmax)
-                [nvecset_ident, nvecset_ident_SQs]\
-                    = self._get_nvecset_ident_three(nvecset_arr, nvecset_SQs)
-                [nvecset_reps, nvecset_ident_reps,
-                 nvecset_SQreps, nvecset_ident_SQreps,
-                 nvecset_inds, nvecset_ident_inds,
-                 nvecset_counts, nvecset_ident_counts,
-                 nvecset_batched, nvecset_ident_batched]\
-                    = self._reps_and_batches_three(nvecset_arr, nvecset_SQs,
-                                                   nvecset_ident,
-                                                   nvecset_ident_SQs,
-                                                   nP)
-            else:
-                [m1, m2, Emax, nP, Lmax, nvec_cutoff, nvecs]\
-                    = self._load_ni_data_two(fc)
-                nvecset_arr = []
-                nmin = nvec_cutoff
-                nmax = nvec_cutoff
-                for n1 in nvecs:
-                    [nvecset_arr, nmin, nmax]\
-                        = self._get_nvecset_arr_two(nvecset_arr, nmin, nmax,
-                                                    m1, m2, Emax, nP, Lmax, n1)
-                nvecset_arr = np.array(nvecset_arr)
-                [nvecset_arr, nvecset_SQs]\
-                    = self._square_and_sort_two(nvecset_arr, nmin, nmax,
-                                                m1, m2, Lmax)
-                [nvecset_ident, nvecset_ident_SQs]\
-                    = self._get_nvecset_ident_two(nvecset_arr, nvecset_SQs)
-                [nvecset_reps, nvecset_ident_reps,
-                 nvecset_SQreps, nvecset_ident_SQreps,
-                 nvecset_inds, nvecset_ident_inds,
-                 nvecset_counts, nvecset_ident_counts,
-                 nvecset_batched, nvecset_ident_batched]\
-                    = self._reps_and_batches_two(nvecset_arr, nvecset_SQs,
-                                                 nvecset_ident,
-                                                 nvecset_ident_SQs, nP)
-
-            nvecset_arr_all = nvecset_arr_all+[nvecset_arr]
-            nvecset_SQs_all = nvecset_SQs_all+[nvecset_SQs]
-            nvecset_reps_all = nvecset_reps_all+[nvecset_reps]
-            nvecset_SQreps_all = nvecset_SQreps_all+[nvecset_SQreps]
-            nvecset_inds_all = nvecset_inds_all+[nvecset_inds]
-            nvecset_counts_all = nvecset_counts_all+[nvecset_counts]
-            nvecset_batched_all = nvecset_batched_all+[nvecset_batched]
-
-            nvecset_ident_all = nvecset_ident_all\
-                + [nvecset_ident]
-            nvecset_ident_SQs_all = nvecset_ident_SQs_all+[nvecset_ident_SQs]
-            nvecset_ident_reps_all = nvecset_ident_reps_all\
-                + [nvecset_ident_reps]
-            nvecset_ident_SQreps_all = nvecset_ident_SQreps_all\
-                + [nvecset_ident_SQreps]
-            nvecset_ident_inds_all = nvecset_ident_inds_all\
-                + [nvecset_ident_inds]
-            nvecset_ident_counts_all = nvecset_ident_counts_all\
-                + [nvecset_ident_counts]
-            nvecset_ident_batched_all = nvecset_ident_batched_all\
-                + [nvecset_ident_batched]
-        self.nvecset_arr = nvecset_arr_all
-        self.nvecset_SQs = nvecset_SQs_all
-        self.nvecset_reps = nvecset_reps_all
-        self.nvecset_SQreps = nvecset_SQreps_all
-        self.nvecset_inds = nvecset_inds_all
-        self.nvecset_counts = nvecset_counts_all
-        self.nvecset_batched = nvecset_batched_all
-
-        self.nvecset_ident = nvecset_ident_all
-        self.nvecset_ident_SQs = nvecset_ident_SQs_all
-        self.nvecset_ident_reps = nvecset_ident_reps_all
-        self.nvecset_ident_SQreps = nvecset_ident_SQreps_all
-        self.nvecset_ident_inds = nvecset_ident_inds_all
-        self.nvecset_ident_counts = nvecset_ident_counts_all
-        self.nvecset_ident_batched = nvecset_ident_batched_all
-
     @staticmethod
     def count_by_isospin(flavor_basis):
         """Count by isospin."""
@@ -1995,55 +2059,6 @@ class QCIndexSpace:
             iso_basis_broken_collapsed = iso_basis_broken_collapsed\
                 + [collapsed_entry]
         return counts, iso_basis_broken_collapsed
-
-    def populate_nonint_multiplicities(self):
-        """Populate the non-interacting multiplicities."""
-        if len(self.fcs.fc_list) == 0 or self.fcs.fc_list[0].isospin is None:
-            self.nonint_multiplicities = None
-            return
-        nPSQ = self.nPSQ
-        isospin_int = int(self.fcs.fc_list[0].isospin)
-        group = self.group
-        if nPSQ == 0:
-            group_str = 'OhP_'
-        elif nPSQ == 1:
-            group_str = 'Dic4_'
-        elif nPSQ == 2:
-            group_str = 'Dic2_'
-        else:
-            raise ValueError("nPSQ not supported")
-        nonint_multiplicities = []
-        for cindex in range(len(self.fcs.ni_list)):
-            nonint_multis_channel_dict = {}
-            for key_best_irreps in self.proj_dict['best_irreps']:
-                irrep = key_best_irreps[0]
-                irrep_dim = group.chardict[group_str+irrep].shape[0]
-                nonint_proj_dict_entry = self.nonint_proj_dict[cindex]
-                if cindex == 0:
-                    n_shells = len(self.nvecset_ident_SQreps[cindex])
-                else:
-                    n_shells = len(self.nvecset_SQreps[cindex])
-                channel_multis_summary_list = []
-                for shell_index in range(n_shells):
-                    for key in nonint_proj_dict_entry[(shell_index,
-                                                       isospin_int)]:
-                        if key == key_best_irreps:
-                            if cindex == 0:
-                                nSQs = self.nvecset_ident_SQreps[
-                                    cindex][shell_index]
-                            else:
-                                nSQs = self.nvecset_SQreps[
-                                    cindex][shell_index]
-                            multi = int(
-                                nonint_proj_dict_entry[
-                                    (shell_index, isospin_int)][key].shape[1]
-                                / irrep_dim)
-                            entry = [*nSQs, nPSQ, multi]
-                            channel_multis_summary_list.append(entry)
-                nonint_multis_channel_dict[key_best_irreps]\
-                    = channel_multis_summary_list
-            nonint_multiplicities.append(nonint_multis_channel_dict)
-        self.nonint_multiplicities = nonint_multiplicities
 
     def _get_ibest(self, E, L):
         """Only for non-zero P."""

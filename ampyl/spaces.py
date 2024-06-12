@@ -164,7 +164,7 @@ class FiniteVolumeSetup:
         nP_is_0zz = self._nP[0] == 0 and self._nP[1] == self._nP[2]
         if not self.spin_half:
             if nP_is_zero:
-                self._set_irreps_nPero_iintspin
+                self._set_irreps_nPero_intspin()
             elif nP_is_00z:
                 self._set_irreps_nP00z_intspin()
             elif nP_is_0zz:

@@ -1289,9 +1289,7 @@ class G(Interpolable):
 
     def _get_value_from_tbks(self, E, L, project, irrep, cindex_col,
                              cindex_row, tbks_entry, slices):
-        masses = self.qcis.fcs.sc_list_sorted[
-            self.qcis.fcs.slices_by_three_masses[0][0]].masses_indexed
-        [m1, m2, m3] = masses
+        m1, m2, m3 = self._extract_masses()
         g_final = []
         if self.qcis.verbosity >= 2:
             print('iterating over spectator channels, slices')
@@ -1483,8 +1481,7 @@ class F(Interpolable):
             if 'reduce_size' in self.qcis.fvs.qc_impl:
                 reduce_size = self.qcis.fvs.qc_impl['reduce_size']
             if reduce_size:
-                m1, m2, m3 = self._extract_masses()
-                mspec = m1
+                mspec, m2, m3 = self._extract_masses()
                 kvecSQ_arr = FOURPI2*tbks_entry.nvecSQ_arr/L**2
                 kvec_arr = TWOPI*tbks_entry.nvec_arr/L
                 omk_arr = np.sqrt(mspec**2+kvecSQ_arr)
@@ -1559,7 +1556,7 @@ class F(Interpolable):
 
         if self.qcis.fcs.n_three_slices != 1:
             raise ValueError("only n_three_slices = 1 is supported")
-
+        m1, m2, m3 = self._extract_masses()
         if nP@nP == 0:
             tbks_sub_indices = self.qcis.get_tbks_sub_indices(E=E, L=L)
             if len(self.qcis.tbks_list) > 1:
@@ -1570,7 +1567,6 @@ class F(Interpolable):
             slices = tbks_entry.shells
             mask = None
         else:
-            m1, m2, m3 = self._extract_masses()
             # ibest = self.qcis._get_ibest(E, L)
             cindex = 0
             ibest = 0

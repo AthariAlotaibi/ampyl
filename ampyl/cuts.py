@@ -1029,7 +1029,8 @@ class Interpolable:
             complement_textures_list.append(complement_textures)
         return smart_poles_list, smart_textures_list, complement_textures_list
 
-    def get_value(self, E=5.0, L=5.0, project=False, irrep=None):
+    def get_value(self, E=5.0, L=5.0, project=False, irrep=None,
+                  short_string='g'):
         """Build the interpolable matrix in a shell-based way."""
         Emax = self.qcis.Emax
         Lmax = self.qcis.Lmax
@@ -1037,15 +1038,18 @@ class Interpolable:
             raise ValueError("get_value called with E > Emax")
         if L > Lmax:
             raise ValueError("get_value called with L > Lmax")
-        interpolate = QC_IMPL_DEFAULTS['g_interpolate']
-        smart_interpolate = QC_IMPL_DEFAULTS['g_smart_interpolate']
-        if 'g_interpolate' in self.qcis.fvs.qc_impl:
-            interpolate = self.qcis.fvs.qc_impl['g_interpolate']
-        if 'g_smart_interpolate' in self.qcis.fvs.qc_impl:
+        interpolate_string = f'{short_string}_interpolate'
+        smart_interpolate_string = f'{short_string}_smart_interpolate'
+        interpolate = QC_IMPL_DEFAULTS[interpolate_string]
+        smart_interpolate = QC_IMPL_DEFAULTS[smart_interpolate_string]
+        if interpolate_string in self.qcis.fvs.qc_impl:
+            interpolate = self.qcis.fvs.qc_impl[interpolate_string]
+        if smart_interpolate_string in self.qcis.fvs.qc_impl:
             smart_interpolate = self.qcis.fvs.qc_impl[
-                'g_smart_interpolate']
+                smart_interpolate_string]
         if interpolate and smart_interpolate:
-            raise ValueError("g_interpolate and g_smart_interpolate "
+            raise ValueError(f"{interpolate_string} and "
+                             f"{smart_interpolate_string} "
                              "cannot both be True")
         if smart_interpolate:
             final_value = self._get_value_smart_interpolated(E, L, irrep)

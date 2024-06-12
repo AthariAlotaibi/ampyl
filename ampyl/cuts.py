@@ -1556,6 +1556,8 @@ class F(Interpolable):
 
         if self.qcis.fcs.n_three_slices != 1:
             raise ValueError("only n_three_slices = 1 is supported")
+
+        cindex = 0
         m1, m2, m3 = self._extract_masses()
         if nP@nP == 0:
             tbks_sub_indices = self.qcis.get_tbks_sub_indices(E=E, L=L)
@@ -1568,7 +1570,6 @@ class F(Interpolable):
             mask = None
         else:
             # ibest = self.qcis._get_ibest(E, L)
-            cindex = 0
             ibest = 0
             warnings.warn(f"\n{bcolors.WARNING}"
                           "ibest is set to 0. This is a temporary fix."

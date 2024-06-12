@@ -84,8 +84,9 @@ class FiniteVolumeSetup:
     """
 
     def __init__(self, formalism='RFT', nP=np.array([0, 0, 0]), qc_impl={},
-                 verbosity=0):
+                 spin_half=False, verbosity=0):
         self.formalism = formalism
+        self.spin_half = spin_half
         self.qc_impl = qc_impl
         self.nP = nP
         self.set_irreps()
@@ -158,37 +159,82 @@ class FiniteVolumeSetup:
 
     def set_irreps(self):
         """Set the irreps relevant for the finite-volume setup."""
-        if (self._nP == np.array([0, 0, 0])).all():
-            self.A1PLUS = 'A1PLUS'
-            self.A2PLUS = 'A2PLUS'
-            self.T1PLUS = 'T1PLUS'
-            self.T2PLUS = 'T2PLUS'
-            self.EPLUS = 'EPLUS'
-            self.A1MINUS = 'A1MINUS'
-            self.A2MINUS = 'A2MINUS'
-            self.T1MINUS = 'T1MINUS'
-            self.T2MINUS = 'T2MINUS'
-            self.EMINUS = 'EMINUS'
-            self.irrep_set = [self.A1PLUS, self.A2PLUS, self.EPLUS,
-                              self.T1PLUS, self.T2PLUS, self.A1MINUS,
-                              self.A2MINUS, self.EMINUS, self.T1MINUS,
-                              self.T2MINUS]
-        elif (self._nP == np.array([0, 0, 1])).all():
-            self.A1 = 'A1'
-            self.A2 = 'A2'
-            self.B1 = 'B1'
-            self.B2 = 'B2'
-            self.E = 'E2'
-            self.irrep_set = [self.A1, self.A2, self.B1, self.B2, self.E]
-        elif (self._nP == np.array([0, 1, 1])).all():
-            self.A1 = 'A1'
-            self.A2 = 'A2'
-            self.B1 = 'B1'
-            self.B2 = 'B2'
-            self.irrep_set = [self.A1, self.A2, self.B1, self.B2]
+        nP_is_zero = (self._nP == np.array([0, 0, 0])).all()
+        nP_is_00z = self._nP[0] == 0 and self._nP[1] == 0
+        nP_is_0zz = self._nP[0] == 0 and self._nP[1] == self._nP[2]
+        if not self.spin_half:
+            if nP_is_zero:
+                self._set_irreps_nPero_iintspin
+            elif nP_is_00z:
+                self._set_irreps_nP00z_intspin()
+            elif nP_is_0zz:
+                self._set_irreps_nP0zz_intspin()
+            else:
+                self.irrep_set = []
+                raise ValueError("unsupported value of nP in irreps: "
+                                 + str(self._nP))
         else:
-            raise ValueError("unsupported value of nP in irreps: "
-                             + str(self._nP))
+            if nP_is_zero:
+                self._set_irreps_nPzero_spinhalf()
+            else:
+                self.irrep_set = []
+                raise ValueError("unsupported value of nP in irreps: "
+                                 + str(self._nP))
+
+    def _set_irreps_nPero_intspin(self):
+        self.A1PLUS = 'A1PLUS'
+        self.A2PLUS = 'A2PLUS'
+        self.T1PLUS = 'T1PLUS'
+        self.T2PLUS = 'T2PLUS'
+        self.EPLUS = 'EPLUS'
+        self.A1MINUS = 'A1MINUS'
+        self.A2MINUS = 'A2MINUS'
+        self.T1MINUS = 'T1MINUS'
+        self.T2MINUS = 'T2MINUS'
+        self.EMINUS = 'EMINUS'
+        self.irrep_set = [self.A1PLUS, self.A2PLUS, self.EPLUS,
+                          self.T1PLUS, self.T2PLUS, self.A1MINUS,
+                          self.A2MINUS, self.EMINUS, self.T1MINUS,
+                          self.T2MINUS]
+
+    def _set_irreps_nP00z_intspin(self):
+        self.A1 = 'A1'
+        self.A2 = 'A2'
+        self.B1 = 'B1'
+        self.B2 = 'B2'
+        self.E = 'E2'
+        self.irrep_set = [self.A1, self.A2, self.B1, self.B2, self.E]
+
+    def _set_irreps_nP0zz_intspin(self):
+        self.A1 = 'A1'
+        self.A2 = 'A2'
+        self.B1 = 'B1'
+        self.B2 = 'B2'
+        self.irrep_set = [self.A1, self.A2, self.B1, self.B2]
+
+    def _set_irreps_nPzero_spinhalf(self):
+        self.A1PLUS = 'A1PLUS'
+        self.A2PLUS = 'A2PLUS'
+        self.EPLUS = 'EPLUS'
+        self.T1PLUS = 'T1PLUS'
+        self.T2PLUS = 'T2PLUS'
+        self.G1PLUS = 'G1PLUS'
+        self.G2PLUS = 'G2PLUS'
+        self.HPLUS = 'HPLUS'
+        self.A1MINUS = 'A1MINUS'
+        self.A2MINUS = 'A2MINUS'
+        self.EMINUS = 'EMINUS'
+        self.T1MINUS = 'T1MINUS'
+        self.T2MINUS = 'T2MINUS'
+        self.G1MINUS = 'G1MINUS'
+        self.G2MINUS = 'G2MINUS'
+        self.HMINUS = 'HMINUS'
+        self.irrep_set = [self.A1PLUS, self.A2PLUS, self.EPLUS,
+                          self.T1PLUS, self.T2PLUS, self.G1PLUS,
+                          self.G2PLUS, self.HPLUS, self.A1MINUS,
+                          self.A2MINUS, self.EMINUS, self.T1MINUS,
+                          self.T2MINUS, self.G1MINUS, self.G2MINUS,
+                          self.HMINUS]
 
     def __str__(self):
         """Return a string representation of the FiniteVolumeSetup object."""
@@ -902,23 +948,24 @@ class QCIndexSpace:
 
     def populate(self):
         """Populate the index space."""
-        ell_max, half_spin = self.get_ell_and_spin()
-        self.group = Groups(ell_max=ell_max, half_spin=half_spin)
-        self.half_spin = half_spin
+        ell_max, spin_half = self.get_ell_and_spin()
+        self.group = Groups(ell_max=ell_max, spin_half=spin_half)
+        self.spin_half = spin_half
         self.Evals, self.Lvals = self.get_Evals_Lvals()
         self.param_structure = self.get_param_structure()
         self.populate_all_nvec_arr()
         self.ell_sets = self._get_ell_sets()
-        self.populate_all_kellm_spaces()
-        self.populate_all_proj_dicts()
-        self.proj_dict = self.group.get_full_proj_dict(qcis=self)
+        if not self.spin_half:
+            self.populate_all_kellm_spaces()
+            self.populate_all_proj_dicts()
+            self.proj_dict = self.group.get_proj_full_dict(qcis=self)
         self.populate_all_nonint_data()
         self.populate_nonint_proj_dict()
         self.populate_nonint_multiplicities()
 
     def get_ell_and_spin(self):
         ell_max = 4
-        half_spin = False
+        spin_half = False
         for sc in self.fcs.sc_list_sorted:
             if np.max(sc.ell_set) > ell_max:
                 ell_max = np.max(sc.ell_set)
@@ -932,14 +979,14 @@ class QCIndexSpace:
                                   "Spin half detected; certain objects may "
                                   "not be supported"
                                   f"{bcolors.ENDC}", stacklevel=2)
-                    half_spin = True
+                    spin_half = True
                 elif np.abs(spin-spin_int) > EPSILON10:
                     raise ValueError("only integer spin and (partially spin "
                                      "half) currently supported")
             max_spin = int(np.max(nic.spins))
             if max_spin > ell_max:
                 ell_max = max_spin
-        return ell_max, half_spin
+        return ell_max, spin_half
 
     def get_Evals_Lvals(self):
         if self.nPSQ != 0:
@@ -1016,17 +1063,17 @@ class QCIndexSpace:
                           f"{three_slice_index}"
                           f"{bcolors.ENDC}")
                 self._populate_slot_zero_momentum(slot_index, nPspecmax)
-                if self.half_spin:
+                if self.spin_half:
                     self._populate_spin_zero_momentum(slot_index, nPspecmax)
             else:
                 nPspecmax = self._get_nPspecmax(three_slice_index)
                 self._populate_slot_nonzero_momentum(slot_index,
                                                      three_slice_index,
                                                      nPspecmax)
-                if self.half_spin:
+                if self.spin_half:
                     raise ValueError("half spin not yet supported for "
                                      "nonzero nP")
-        elif not three_particle_channel and not self.half_spin:
+        elif not three_particle_channel and not self.spin_half:
             nPspecmax = EPSILON4
             self._populate_slot_zero_momentum(slot_index, nPspecmax)
         else:
@@ -1204,7 +1251,7 @@ class QCIndexSpace:
             print(self)
             print(f"{self}{bcolors.ENDC}")
         for sc_index in range(self.n_channels):
-            proj_dict = group.get_channel_proj_dict(qcis=self,
+            proj_dict = group.get_proj_channel_dict(qcis=self,
                                                     sc_index=sc_index)
             sc_proj_dicts = sc_proj_dicts+[proj_dict]
             sc_proj_dict_channel_by_shell = [[]]
@@ -1214,7 +1261,7 @@ class QCIndexSpace:
                 sc_proj_dict_shell_set = []
                 for kellm_shell in kellm_shell_set:
                     sc_proj_dict_shell_set = sc_proj_dict_shell_set\
-                        + [group.get_shell_proj_dict(
+                        + [group.get_proj_shell_dict(
                             qcis=self,
                             cindex=sc_index,
                             kellm_shell=kellm_shell,
@@ -1347,22 +1394,22 @@ class QCIndexSpace:
             if two_particles:
                 isospin_channel = self.fcs.ni_list[nic_index].isospin_channel
                 nonint_proj_dict\
-                    .append(self.group.get_noninttwo_proj_dict(
+                    .append(self.group.get_proj_nonint_two_particles_dict(
                         qcis=self, nic_index=nic_index,
                         isospin_channel=isospin_channel))
             elif three_particles and first_spin == 0.:
                 nonint_proj_dict.append(
-                    self.group.get_nonint_proj_dict(qcis=self,
-                                                    nic_index=nic_index))
+                    self.group.get_proj_nonint_three_pions_dict(
+                        qcis=self, nic_index=nic_index))
             elif three_particles and first_spin == 1.:
                 nonint_proj_dict.append(
                     self.group.
-                    get_nonint_proj_dict_vector(qcis=self,
-                                                nic_index=nic_index))
-            elif three_particles and self.half_spin:
+                    get_proj_nonint_three_spinning_dict(
+                        qcis=self, nic_index=nic_index))
+            elif three_particles and self.spin_half:
                 nonint_proj_dict.append(
-                    self.group.get_nonint_proj_dict_half(qcis=self,
-                                                         nic_index=nic_index))
+                    self.group.get_proj_nonint_three_spinning_dict(
+                        qcis=self, nic_index=nic_index))
             else:
                 raise ValueError("only two and three particles with certain "
                                  "spin combinations are supported by "

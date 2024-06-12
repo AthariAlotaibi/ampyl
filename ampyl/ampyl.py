@@ -304,8 +304,10 @@ class QC:
 
         if version == 'f3':
             [pcotdelta_parameter_lists, k3_params] = k_params
-            F = self.f.get_value(E, L, project, irrep)/rescale
-            G = self.g.get_value(E, L, project, irrep)/rescale
+            F = self.f.get_value(E, L, project, irrep,
+                                 short_string='f')/rescale
+            G = self.g.get_value(E, L, project, irrep,
+                                 short_string='g')/rescale
             K = self.k.get_value(E, L, pcotdelta_parameter_lists,
                                  project, irrep)*rescale
             return (F/3 - F @ np.linalg.inv(np.linalg.inv(K)+F+G) @ F)/L**3
@@ -313,7 +315,8 @@ class QC:
         if (len(version) >= 8) and (version[:8] == 'kdf_zero'):
             [pcotdelta_parameter_lists, k3_params] = k_params
             if version == 'kdf_zero_1+_fgcombo':
-                FplusG = self.fplusg.get_value(E, L, project, irrep)/rescale
+                FplusG = self.fplusg.get_value(E, L, project, irrep,
+                                               short_string='fplusg')/rescale
                 K = self.k.get_value(E, L, pcotdelta_parameter_lists,
                                      project, irrep)*rescale
                 if len(FplusG) > len(K):
@@ -337,8 +340,10 @@ class QC:
                 id_mat = np.identity(len(FplusG))
                 return np.linalg.det(id_mat+(FplusG)@K)-shift
 
-            F = self.f.get_value(E, L, project, irrep)/rescale
-            G = self.g.get_value(E, L, project, irrep)/rescale
+            F = self.f.get_value(E, L, project, irrep,
+                                 short_string='f')/rescale
+            G = self.g.get_value(E, L, project, irrep,
+                                 short_string='g')/rescale
             K = self.k.get_value(E, L, pcotdelta_parameter_lists,
                                  project, irrep)*rescale
 
@@ -379,7 +384,11 @@ class QC:
                  f'version = {version}\n'
                  f'rescale = {rescale}\n'
                  f'g_smart_interpolate = '
-                 f'{self.qcis.fvs.qc_impl["g_smart_interpolate"]}\n\n')
+                 f'{self.qcis.fvs.qc_impl["g_smart_interpolate"]}\n'
+                 f'f_smart_interpolate = '
+                 f'{self.qcis.fvs.qc_impl["f_smart_interpolate"]}\n'
+                 f'fplusg_smart_interpolate = '
+                 f'{self.qcis.fvs.qc_impl["fplusg_smart_interpolate"]}\n\n')
 
         wf.write('A solution was found at\n'
                  f'E = {root}\n\n')
@@ -397,14 +406,16 @@ class QC:
                                       version=version, rescale=rescale)
             wf.write(f'qc(E = {scaler:.2f}sol) = {qc_value}\n')
 
-        G = self.g.get_value(E=root, L=L, project=project, irrep=irrep)
+        G = self.g.get_value(E=root, L=L, project=project, irrep=irrep,
+                             short_string='g')
         wf.write(f'\nShape of projected G-matrix at the solution: {G.shape}\n')
         eigenvalues = np.sort(np.linalg.eigvals(G))
         wf.write(f'Eigenvalues of projected G-matrix at the solution:\n'
                  f'{eigenvalues}\n\n')
         wf.write(f'Value of projected G-matrix at the solution:\n{G}\n\n')
 
-        F = self.f.get_value(E=root, L=L, project=project, irrep=irrep)
+        F = self.f.get_value(E=root, L=L, project=project, irrep=irrep,
+                             short_string='f')
         wf.write(f'Shape of projected F-matrix at the solution: {F.shape}\n')
         eigenvalues = np.sort(np.linalg.eigvals(F))
         wf.write(f'Eigenvalues of projected F-matrix at the solution:\n'
@@ -430,14 +441,14 @@ class QC:
         wf.write('Value of the projected I+(F+G)K at the solution:\n'
                  f'{qc_matrix}\n\n')
 
-        G = self.g.get_value(E=root, L=L)
+        G = self.g.get_value(E=root, L=L, short_string='g')
         wf.write(f'Shape of unprojected G-matrix at the solution: {G.shape}\n')
         eigenvalues = np.sort(np.linalg.eigvals(G))
         wf.write(f'Eigenvalues of unprojected G-matrix at the solution:\n'
                  f'{eigenvalues}\n\n')
         wf.write(f'Value of unprojected G-matrix at the solution:\n{G}\n\n')
 
-        F = self.f.get_value(E=root, L=L)
+        F = self.f.get_value(E=root, L=L, short_string='f')
         wf.write(f'Shape of unprojected F-matrix at the solution: {F.shape}\n')
         eigenvalues = np.sort(np.linalg.eigvals(F))
         wf.write(f'Eigenvalues of unprojected F-matrix at the solution:\n'
@@ -481,7 +492,7 @@ class QC:
                                                         rescale)
         roots = np.array(roots)
         roots_unique = np.array([])
-        cutoff_for_unique = 1.e-3
+        cutoff_for_unique = EPSILON3
         for root in roots:
             if len(roots_unique) == 0:
                 qc_value = self.get_value(E=root, L=L, k_params=k_params,

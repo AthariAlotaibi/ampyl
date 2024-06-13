@@ -254,6 +254,14 @@ class ThreeBodyInteractionScheme:
     :type fcs: :class:`FlavorChannelSpace` object
     :param Emin: minimum energy extent of the subthreshold region
     :type Emin: float
+    :param flavor_ellm_dim: dimension of the flavor-ellm space
+    :type flavor_ellm_dim: int
+    :param use_pv_shift_prescription: whether to use the IPV prescription for
+        removing K-matrix poles
+    :type use_pv_shift_prescription: bool
+    :param pv_shift_parameters: parameters needed to define the IPV
+        prescription
+    :type pv_shift_parameters: list, length equal to flavor_ellm_dim
     :param three_scheme: three-body interaction scheme (Currently only
         ``'relativistic pole'`` is supported.)
     :type three_scheme: str
@@ -269,12 +277,30 @@ class ThreeBodyInteractionScheme:
 
     def __init__(self, fcs=None, Emin=0.0, three_scheme='relativistic pole',
                  scheme_data=[-1.0, 0.0], kdf_functions=None,
+                 use_pv_shift_prescription=False,
+                 pv_shift_parameters=None,
                  verbosity=0):
         self.Emin = Emin
         if fcs is None:
             self.fcs = FlavorChannelSpace(fc_list=[FlavorChannel(3)])
         else:
             self.fcs = fcs
+        if use_pv_shift_prescription:
+            if pv_shift_parameters is None:
+                raise ValueError("pv_shift_parameters must be provided")
+        else:
+            if pv_shift_parameters is not None:
+                pv_shift_parameters = None
+                warnings.warn("pv_shift_parameters provided but "
+                              "use_pv_shift_prescription is False. "
+                              "Setting pv_shift_parameters to None.")
+        self.use_pv_shift_prescription = use_pv_shift_prescription
+        self._set_flavor_ellm_dim()
+        if pv_shift_parameters is None:
+            self.pv_shift_parameters =\
+                [None for i in range(self.flavor_ellm_dim)]
+        else:
+            self.pv_shift_parameters = pv_shift_parameters
         self.three_scheme = three_scheme
         self.scheme_data = scheme_data
         if kdf_functions is None:
@@ -289,6 +315,14 @@ class ThreeBodyInteractionScheme:
             print(f"{bcolors.OKGREEN}")
             print(self)
             print(f"{bcolors.ENDC}")
+
+    def _set_flavor_ellm_dim(self):
+        flavor_ellm_dim = 0
+        for sc in self.fcs.sc_list:
+            for ell in sc.ell_set:
+                dim = 2*ell+1
+                flavor_ellm_dim += dim
+        self.flavor_ellm_dim = flavor_ellm_dim
 
     @property
     def verbosity(self):

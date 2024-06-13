@@ -222,6 +222,8 @@ class FlavorChannel:
     :vartype isospins: list of floats, set automatically
     :ivar allowed_total_isospins: allowed total isospins for the flavor channel
     :vartype allowed_total_isospins: list of floats, set automatically
+    :ivar allowed_sub_isospins: allowed sub-isospins for the flavor channel
+    :vartype allowed_sub_isospins: list, set automatically
     :ivar summary: summary of the flavor channel
     :vartype summary: list, set automatically
     :ivar summary_reduced: reduced summary of the flavor channel
@@ -289,6 +291,7 @@ class FlavorChannel:
         self.allowed_total_isospins = self._get_allowed_total_isospins()
         self.isospin_channel = self._isospin_channel
         self.isospin = self._isospin
+        self.allowed_sub_isospins = self._get_allowed_sub_isospins()
         self.verbosity = self._verbosity
         self.n_particles = self._n_particles
 
@@ -378,6 +381,22 @@ class FlavorChannel:
             return allowed_total_isospins
         raise NotImplementedError("more than three particles not implemented "
                                   "yet")
+
+    def _get_allowed_sub_isospins(self):
+        if not self._isospin_channel:
+            return None
+        if self._n_particles != 3:
+            return None
+        if self.isospin == 0.:
+            return [1.]
+        if self.isospin == 1.:
+            return [0., 1., 2.]
+        if self.isospin == 2.:
+            return [1., 2.]
+        if self.isospin == 3.:
+            return [2.]
+        raise NotImplementedError(f"total isospin {self.isospin} not "
+                                  "implemented yet")
 
     @property
     def particles(self):

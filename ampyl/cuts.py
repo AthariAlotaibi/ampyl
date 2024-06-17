@@ -422,7 +422,7 @@ class Interpolable:
             for shell_index in range(len(self.qcis.tbks_list[0][0].shells)):
                 shell = self.qcis.tbks_list[0][0].shells[shell_index]
                 try:
-                    transposed_proj_dict = self.qcis.sc_proj_dicts[
+                    transposed_proj_dict = self.qcis.proj_dicts_by_sc[
                         spectator_channel_index][irrep][
                         ang_mom_dim*shell[0]:ang_mom_dim*shell[1]].T
                     support_rows = []
@@ -433,7 +433,7 @@ class Interpolable:
                                 + [row_index]
                     proj_candidate = transposed_proj_dict[support_rows].T
                     # only purpose of the following is to trigger KeyError
-                    self.qcis.sc_proj_dicts_by_shell[
+                    self.qcis.proj_dicts_by_sc_and_shellset[
                         spectator_channel_index][0][shell_index][irrep]
                     dim_with_shell_index_single_sc.\
                         append([(proj_candidate.shape)[1], shell_index])
@@ -641,20 +641,21 @@ class Interpolable:
                                   "ibest is set to 0. This is a temporary fix."
                                   f"{bcolors.ENDC}")
                     proj_tmp_right = np.array(self.qcis
-                                              .sc_proj_dicts_by_shell[
+                                              .proj_dicts_by_sc_and_shellset[
                                                   sc_index_col][ibest]
                                               )[mask_col_shells][
                                                   col_shell_index][irrep]
                     proj_tmp_left = np.conjugate((
                         np.array(self.qcis.
-                                 sc_proj_dicts_by_shell[sc_index_row][ibest]
+                                 proj_dicts_by_sc_and_shellset[
+                                     sc_index_row][ibest]
                                  )[mask_row_shells][row_shell_index][irrep]
                     ).T)
                 else:
-                    proj_tmp_right = self.qcis.sc_proj_dicts_by_shell[
+                    proj_tmp_right = self.qcis.proj_dicts_by_sc_and_shellset[
                         sc_index_col][0][col_shell_index][irrep]
                     proj_tmp_left = np.conjugate((
-                        self.qcis.sc_proj_dicts_by_shell[
+                        self.qcis.proj_dicts_by_sc_and_shellset[
                             sc_index_row][0][row_shell_index][irrep]
                         ).T)
             except KeyError:
@@ -1409,21 +1410,21 @@ class G(Interpolable):
         warnings.warn(f"\n{bcolors.WARNING}"
                       "ibest is set to 0. This is a temporary fix."
                       f"{bcolors.ENDC}")
-        proj_tmp_right = np.array(self.qcis.sc_proj_dicts_by_shell[
+        proj_tmp_right = np.array(self.qcis.proj_dicts_by_sc_and_shellset[
             sc_index_col][ibest])[mask_col_shells][
                 col_shell_index][irrep]
         proj_tmp_left = np.conjugate((
             np.array(self.qcis.
-                     sc_proj_dicts_by_shell[sc_index_row][ibest]
+                     proj_dicts_by_sc_and_shellset[sc_index_row][ibest]
                      )[mask_row_shells][row_shell_index][irrep]).T)
         return proj_tmp_right, proj_tmp_left
 
     def _nPzero_projectors(self, sc_index_row, sc_index_col,
                            row_shell_index, col_shell_index, irrep):
-        proj_tmp_right = self.qcis.sc_proj_dicts_by_shell[
+        proj_tmp_right = self.qcis.proj_dicts_by_sc_and_shellset[
                         sc_index_col][0][col_shell_index][irrep]
         proj_tmp_left = np.conjugate((
-                        self.qcis.sc_proj_dicts_by_shell[
+                        self.qcis.proj_dicts_by_sc_and_shellset[
                             sc_index_row][0][row_shell_index][irrep]
                         ).T)
         return proj_tmp_right, proj_tmp_left
@@ -1532,11 +1533,12 @@ class F(Interpolable):
                     warnings.warn(f"\n{bcolors.WARNING}"
                                   "ibest is set to 0. This is a temporary fix."
                                   f"{bcolors.ENDC}")
-                    proj_tmp_right = np.array(self.qcis.sc_proj_dicts_by_shell[
-                        sc_ind][ibest])[mask_slices][slice_index][irrep]
+                    proj_tmp_right = np.array(
+                        self.qcis.proj_dicts_by_sc_and_shellset[
+                            sc_ind][ibest])[mask_slices][slice_index][irrep]
                     proj_tmp_left = np.conjugate(((proj_tmp_right)).T)
                 else:
-                    proj_tmp_right = self.qcis.sc_proj_dicts_by_shell[
+                    proj_tmp_right = self.qcis.proj_dicts_by_sc_and_shellset[
                         sc_ind][0][slice_index][irrep]
                     proj_tmp_left = np.conjugate((proj_tmp_right).T)
             except KeyError:

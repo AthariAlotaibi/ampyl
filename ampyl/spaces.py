@@ -43,8 +43,8 @@ from .constants import FOURPI2
 from .constants import EPSILON4
 from .constants import EPSILON10
 from .constants import EPSILON20
-from .constants import DELTA_L_FOR_GRID
-from .constants import DELTA_E_FOR_GRID
+from .constants import DELTA_L_NPNZ_GRID
+from .constants import DELTA_E_NPNZ_GRID
 from .constants import L_GRID_SHIFT
 from .constants import E_GRID_SHIFT
 from .constants import ISO_PROJECTORS
@@ -296,11 +296,10 @@ class ThreeBodyInteractionScheme:
                               "Setting pv_shift_parameters to None.")
         self.use_pv_shift_prescription = use_pv_shift_prescription
         self._set_flavor_ellm_dim()
-        if pv_shift_parameters is None:
-            self.pv_shift_parameters =\
-                [None for i in range(self.flavor_ellm_dim)]
-        else:
-            self.pv_shift_parameters = pv_shift_parameters
+        wrong_length = len(pv_shift_parameters) != self.flavor_ellm_dim
+        if use_pv_shift_prescription and wrong_length:
+            raise ValueError("pv_shift_parameters must have length equal "
+                             "to flavor_ellm_dim")
         self.three_scheme = three_scheme
         self.scheme_data = scheme_data
         if kdf_functions is None:
@@ -837,16 +836,15 @@ class QCIndexSpace:
     :vartype nvecset_ident_batched: numpy.ndarray
     """
 
-    def __init__(self, fcs=None, fvs=None, tbis=None,
-                 Emax=5.0, Lmax=5.0,
-                 deltaE=DELTA_E_FOR_GRID, deltaL=DELTA_L_FOR_GRID,
+    def __init__(self, fcs=None, fvs=None, tbis=None, Emax=5., Lmax=5.,
+                 deltaE_nPnz=DELTA_E_NPNZ_GRID, deltaL_nPnz=DELTA_L_NPNZ_GRID,
                  verbosity=0):
         self._verbosity = verbosity
         self.verbosity = verbosity
         self.Emax = Emax
         self.Lmax = Lmax
-        self.deltaE = deltaE
-        self.deltaL = deltaL
+        self.deltaE_nPnz = deltaE_nPnz
+        self.deltaL_nPnz = deltaL_nPnz
 
         if fcs is None:
             if verbosity >= 2:
@@ -985,14 +983,14 @@ class QCIndexSpace:
         ell_max, spin_half = self.get_ell_and_spin()
         self.group = Groups(ell_max=ell_max, spin_half=spin_half)
         self.spin_half = spin_half
-        self.Evals, self.Lvals = self.get_Evals_Lvals()
+        self.Evals, self.Lvals = self.get_grid_nPnonzero()
         self.param_structure = self.get_param_structure()
         self.populate_all_nvec_arr()
         self.ell_sets = self._get_ell_sets()
         if not self.spin_half:
             self.populate_all_kellm_spaces()
             self.populate_all_proj_dicts()
-            self.proj_dict = self.group.get_proj_full_dict(qcis=self)
+            self.proj_dict = self.group.get_full_proj_dict(qcis=self)
         self.populate_all_nonint_data()
         self.populate_nonint_proj_dict()
         self.populate_nonint_multiplicities()
@@ -1022,15 +1020,15 @@ class QCIndexSpace:
                 ell_max = max_spin
         return ell_max, spin_half
 
-    def get_Evals_Lvals(self):
+    def get_grid_nPnonzero(self):
         if self.nPSQ != 0:
             if self.verbosity >= 2:
                 print(f"{bcolors.OKGREEN}"
                       "nPSQ is nonzero, grid will be used"
                       f"{bcolors.ENDC}")
-            [Evals, Lvals] = self._get_grid_nonzero_nP(self.Emax, self.Lmax,
-                                                       self.deltaE,
-                                                       self.deltaL)
+            [Evals, Lvals] = self._get_grid_nPnonzero(self.Emax, self.Lmax,
+                                                      self.deltaE_nPnz,
+                                                      self.deltaL_nPnz)
             if self.verbosity >= 2:
                 print(f"{bcolors.OKGREEN}"
                       f"Grid for non-zero nP:\n"
@@ -1041,7 +1039,7 @@ class QCIndexSpace:
             Lvals = None
         return Evals, Lvals
 
-    def _get_grid_nonzero_nP(self, Emax, Lmax, deltaE, deltaL):
+    def _get_grid_nPnonzero(self, Emax, Lmax, deltaE, deltaL):
         Lmin = np.mod(Lmax-L_GRID_SHIFT, deltaL)+L_GRID_SHIFT
         Emin = np.mod(Emax-E_GRID_SHIFT, deltaE)+E_GRID_SHIFT
         Lvals = np.arange(Lmin, Lmax+EPSILON4, deltaL)
@@ -1055,19 +1053,17 @@ class QCIndexSpace:
         return [Evals, Lvals]
 
     def get_param_structure(self):
-        parametrization_structure = []
-        two_param_struc_tmp = []
+        param_structure = []
+        two_param_structure = []
         for sc in self.fcs.sc_list_sorted:
-            tmp_entry = []
+            param_entry = []
             for n_params_tmp in sc.n_params_set:
-                tmp_entry.append([0.0]*n_params_tmp)
-            two_param_struc_tmp.append(tmp_entry)
-        parametrization_structure.append(two_param_struc_tmp)
-        three_param_struc_tmp = []
-        for _ in self.tbis.kdf_functions:
-            three_param_struc_tmp = three_param_struc_tmp+[0.0]
-        parametrization_structure.append(three_param_struc_tmp)
-        return parametrization_structure
+                param_entry.append([0.]*n_params_tmp)
+            two_param_structure.append(param_entry)
+        param_structure.append(two_param_structure)
+        three_param_structure = [0.]*len(self.tbis.kdf_functions)
+        param_structure.append(three_param_structure)
+        return param_structure
 
     def populate_all_nvec_arr(self):
         """Populate all nvec_arr slots."""
@@ -1170,14 +1166,14 @@ class QCIndexSpace:
         self.tbks_list[slot_index] = [tbks_copy]
         Lmax = self.Lmax
         Emax = self.Emax
-        deltaE = self.deltaE
-        deltaL = self.deltaL
+        deltaE = self.deltaE_nPnz
+        deltaL = self.deltaL_nPnz
         masses = self.fcs.sc_list_sorted[
             self.fcs.slices_by_three_masses[three_slice_index][0]]\
             .masses_indexed
         m_spec = masses[0]
-        nP = self.nP
-        [Evals, Lvals] = self._get_grid_nonzero_nP(Emax, Lmax, deltaE, deltaL)
+        nP = self.fvs.nP
+        [Evals, Lvals] = self._get_grid_nPnonzero(Emax, Lmax, deltaE, deltaL)
         for Ltmp in Lvals:
             for Etmp in Evals:
                 self._populate_EL_iteration(slot_index, tbks_tmp, nvec_arr,
@@ -1226,40 +1222,40 @@ class QCIndexSpace:
                   f"Populating kellm spaces\n"
                   f"{self.n_channels} channels to populate"
                   f"{bcolors.ENDC}")
-        kellm_shells = [[]]
-        kellm_spaces = [[]]
-        for cindex in range(self.n_channels):
-            if cindex < self.n_two_channels:
+        kellm_shells = []
+        kellm_spaces = []
+        for sc_index in range(self.n_channels):
+            if sc_index < self.n_two_channels:
                 slot_index = 0
             else:
-                cindex_shift = cindex-self.n_two_channels
+                sc_index_shift = sc_index-self.n_two_channels
                 slot_index = -1
                 for k in range(len(self.fcs.slices_by_three_masses)):
                     three_slice = self.fcs.slices_by_three_masses[k]
-                    if three_slice[0] <= cindex_shift < three_slice[1]:
+                    if three_slice[0] <= sc_index_shift < three_slice[1]:
                         slot_index = k
                 if self.n_two_channels > 0:
                     slot_index = slot_index+1
-            tbks_list_tmp = self.tbks_list[slot_index]
-            ellm_set = self.ellm_sets[cindex]
-            kellm_shells_single = [[]]
-            kellm_spaces_single = [[]]
-            for tbks_tmp in tbks_list_tmp:
-                nvec_arr = tbks_tmp.nvec_arr
-                kellm_shell = (len(ellm_set)*np.array(tbks_tmp.shells
+            tbks_fixed_masses_list = self.tbks_list[slot_index]
+            ellm_set = self.ellm_sets[sc_index]
+            kellm_shells_entry = []
+            kellm_spaces_entry = []
+            for tbks_entry in tbks_fixed_masses_list:
+                nvec_arr = tbks_entry.nvec_arr
+                kellm_shell = (len(ellm_set)*np.array(tbks_entry.shells
                                                       )).tolist()
-                kellm_shells_single = kellm_shells_single+[kellm_shell]
+                kellm_shells_entry.append(kellm_shell)
                 ellm_set_extended = np.tile(ellm_set, (len(nvec_arr), 1))
                 nvec_arr_extended = np.repeat(nvec_arr, len(ellm_set),
                                               axis=0)
                 kellm_space = np.concatenate((nvec_arr_extended,
                                               ellm_set_extended),
                                              axis=1)
-                kellm_spaces_single = kellm_spaces_single+[kellm_space]
-            kellm_shells = kellm_shells+[kellm_shells_single[1:]]
-            kellm_spaces = kellm_spaces+[kellm_spaces_single[1:]]
-        self.kellm_spaces = kellm_spaces[1:]
-        self.kellm_shells = kellm_shells[1:]
+                kellm_spaces_entry.append(kellm_space)
+            kellm_shells.append(kellm_shells_entry)
+            kellm_spaces.append(kellm_spaces_entry)
+        self.kellm_spaces = kellm_spaces
+        self.kellm_shells = kellm_shells
         if self.verbosity >= 2:
             print(f"{bcolors.OKGREEN}"
                   "Result for kellm spaces:\n"
@@ -1277,36 +1273,34 @@ class QCIndexSpace:
     def populate_all_proj_dicts(self):
         """Populate all projector dictionaries."""
         group = self.group
-        sc_proj_dicts = []
-        sc_proj_dicts_by_shell = [[]]
+        proj_dicts_by_sc = []
+        proj_dicts_by_sc_and_shellset = []
         if self.verbosity >= 2:
             print(f"{bcolors.OKGREEN}\n"
                   f"Getting the dict for following qcis:")
             print(self)
             print(f"{self}{bcolors.ENDC}")
         for sc_index in range(self.n_channels):
-            proj_dict = group.get_proj_channel_dict(qcis=self,
-                                                    sc_index=sc_index)
-            sc_proj_dicts = sc_proj_dicts+[proj_dict]
-            sc_proj_dict_channel_by_shell = [[]]
+            fixed_sc_proj_dict = group.get_fixed_sc_proj_dict(
+                qcis=self, sc_index=sc_index)
+            proj_dicts_by_sc.append(fixed_sc_proj_dict)
+            fixed_sc_proj_dicts_by_shellset = []
             for kellm_shell_index in range(len(self.kellm_shells[sc_index])):
                 kellm_shell_set = self.kellm_shells[sc_index][
                     kellm_shell_index]
-                sc_proj_dict_shell_set = []
+                fixed_sc_and_shellset_proj_dict = []
                 for kellm_shell in kellm_shell_set:
-                    sc_proj_dict_shell_set = sc_proj_dict_shell_set\
-                        + [group.get_proj_shell_dict(
-                            qcis=self,
-                            cindex=sc_index,
+                    fixed_sc_and_shellset_proj_dict.append(
+                        group.get_fixed_sc_and_shell_proj_dict(
+                            qcis=self, sc_index=sc_index,
                             kellm_shell=kellm_shell,
-                            shell_index=kellm_shell_index)]
-                sc_proj_dict_channel_by_shell = sc_proj_dict_channel_by_shell\
-                    + [sc_proj_dict_shell_set]
-            sc_proj_dict_channel_by_shell = sc_proj_dict_channel_by_shell[1:]
-            sc_proj_dicts_by_shell = sc_proj_dicts_by_shell\
-                + [sc_proj_dict_channel_by_shell]
-        self.sc_proj_dicts = sc_proj_dicts
-        self.sc_proj_dicts_by_shell = sc_proj_dicts_by_shell[1:]
+                            kellm_shell_index=kellm_shell_index))
+                fixed_sc_proj_dicts_by_shellset.append(
+                    fixed_sc_and_shellset_proj_dict)
+            proj_dicts_by_sc_and_shellset.append(
+                fixed_sc_proj_dicts_by_shellset)
+        self.proj_dicts_by_sc = proj_dicts_by_sc
+        self.proj_dicts_by_sc_and_shellset = proj_dicts_by_sc_and_shellset
 
     def populate_all_nonint_data(self):
         """Populate all non-interacting data."""

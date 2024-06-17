@@ -51,6 +51,9 @@ QC_IMPL_DEFAULTS = {'hermitian': True,
                     'use_cob_matrices': True,
                     'reduce_size': True,
                     'populate_interp_zeros': False,
+                    'use_pv_shift_prescription': False,
+                    'pv_shift_parameters': [0.],
+                    'include_H_in_IPV': True,
                     'ibest_always_zero': True}
 PI = np.pi
 TWOPI = 2.*PI
@@ -77,8 +80,8 @@ EPSILON20 = 1.0e-20
 BAD_MIN_GUESS = 100.
 BAD_MAX_GUESS = 0.
 POLE_CUT = 100.
-DELTA_L_FOR_GRID = 0.9
-DELTA_E_FOR_GRID = 0.9
+DELTA_L_NPNZ_GRID = 0.9
+DELTA_E_NPNZ_GRID = 0.9
 L_GRID_SHIFT = 2.0
 E_GRID_SHIFT = 3.0
 G_TEMPLATE_DICT = {}

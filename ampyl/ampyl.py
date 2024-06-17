@@ -143,15 +143,16 @@ class K:
                         ibest = 0
                     else:
                         ibest = self.qcis._get_ibest(E, L)
-                    proj_tmp_right = np.array(self.qcis.sc_proj_dicts_by_shell[
-                        sc_ind][ibest])[mask_slices][slice_index][irrep]
+                    proj_tmp_right = np.array(
+                        self.qcis.proj_dicts_by_sc_and_shellset[
+                            sc_ind][ibest])[mask_slices][slice_index][irrep]
                     proj_tmp_left = np.conjugate(((proj_tmp_right)).T)
                 else:
                     warnings.warn(f"\n{bcolors.WARNING}"
                                   "ibest is set to 0. This is a temporary fix."
                                   f"{bcolors.ENDC}")
                     ibest = 0
-                    proj_tmp_right = self.qcis.sc_proj_dicts_by_shell[
+                    proj_tmp_right = self.qcis.proj_dicts_by_sc_and_shellset[
                         sc_ind][ibest][slice_index][irrep]
                     proj_tmp_left = np.conjugate((proj_tmp_right).T)
             except KeyError:

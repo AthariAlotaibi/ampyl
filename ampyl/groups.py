@@ -995,22 +995,22 @@ class Groups:
             induced_rep = np.kron(induced_rep_tmp2, wig_d_third_spin)
         return induced_rep
 
-    def get_proj_kellm(self, nP=np.array([0, 0, 0]), irrep='A1PLUS', irow=0,
-                       nvec_arr=np.zeros((1, 3)),
+    def get_kellm_proj(self, nP=np.array([0, 0, 0]), irrep='A1PLUS',
+                       irrep_row=0, nvec_arr=np.zeros((1, 3)),
                        ellm_set=[[0, 0]]):
         """Get a particular large projector."""
         if (nP == np.array([0, 0, 0])).all():
             group_str = 'OhP'
             group = self.OhP
-            bT = self.bTdict[group_str+'_'+irrep][irow]
+            bT = self.bTdict[group_str+'_'+irrep][irrep_row]
         elif (nP == np.array([0, 0, 1])).all():
             group_str = 'Dic4'
             group = self.Dic4
-            bT = self.bTdict[group_str+'_'+irrep][irow]
+            bT = self.bTdict[group_str+'_'+irrep][irrep_row]
         elif (nP == np.array([0, 1, 1])).all():
             group_str = 'Dic2'
             group = self.Dic2
-            bT = self.bTdict[group_str+'_'+irrep][irow]
+            bT = self.bTdict[group_str+'_'+irrep][irrep_row]
         else:
             return ValueError("group not yet supported by get_large_proj")
         dim = len(nvec_arr)*len(ellm_set)
@@ -1202,41 +1202,44 @@ class Groups:
         finalproj = np.array(eigvecsT_final).T
         return finalproj
 
-    def _get_summary(self, proj_dict, group_str, qcis, totalsize):
-        contrib_irreps = []
+    def _get_summary(self, proj_dict, group_str, qcis, total_size):
+        contributing_irreps = []
+        irrep_index = 0
+        irrep_row_index = 1
         for key in proj_dict:
-            if key[1] == 0:
-                contrib_irreps = contrib_irreps+[key[0]]
+            if key[irrep_row_index] == 0:
+                contributing_irreps.append(key[irrep_index])
 
         best_irreps = []
-        for irrep_tmp in contrib_irreps:
-            irrep_dim = len(self.bTdict[group_str+'_'+irrep_tmp])
-            i = irrep_dim-1
-            i_best = 0
-            while i >= 0:
-                proj_tmp = proj_dict[(irrep_tmp, i)]
+        for irrep in contributing_irreps:
+            irrep_dim = len(self.bTdict[group_str+'_'+irrep])
+            irrep_row = irrep_dim-1
+            best_irrep_row = 0
+            while irrep_row >= 0:
+                proj_tmp = proj_dict[(irrep, irrep_row)]
                 if proj_tmp.dtype == np.float64:
-                    i_best = i
-                i -= 1
-            best_irreps = best_irreps+[(irrep_tmp, i_best)]
+                    best_irrep_row = irrep_row
+                irrep_row -= 1
+            best_irreps = best_irreps+[(irrep, best_irrep_row)]
 
-        summary_str = f"kellm space has size {str(totalsize)}\n\n"
-        total = 0
+        summary_str = f"kellm space has size {str(total_size)}\n\n"
+        grand_total = 0
         for key in best_irreps:
             n_times = len(proj_dict[key].T)
-            n_dim = len(self.bTdict[group_str+'_'+key[0]])
-            n_tot = n_times*n_dim
-
-            pad = (7-len(key[0]))*" "
-            summary_str += f"    {key[0]+pad} covers {n_times}x{n_dim}"\
-                + f" = {n_tot} slots\n"
-            total = total+n_tot
-        summary_str += f"\ntotal is {total} \n"
-        if total == totalsize:
+            irrep_dim = len(self.bTdict[group_str+'_'+key[0]])
+            total_covered = n_times*irrep_dim
+            pad_offset = 7
+            pad = (pad_offset-len(key[irrep_index]))*" "
+            summary_str += (f"    {key[irrep_index]+pad} covers "
+                            f"{n_times}x{irrep_dim}"
+                            f" = {total_covered} slots\n")
+            grand_total = grand_total+total_covered
+        summary_str += f"\ntotal is {grand_total} \n"
+        if grand_total == total_size:
             summary_str += "total matches size of kellm space"
         else:
-            summary_str += "does not match size of kellm space, "\
-                + "something went wrong"
+            summary_str += ("does not match size of kellm space, "
+                            "something went wrong")
         return best_irreps, summary_str
 
     def get_iso_projection(self, qcis=None, cindex=0, iso_index=0,
@@ -1796,71 +1799,70 @@ class Groups:
         master_dict['summary'] = summary_str
         return master_dict
 
-    def get_proj_channel_dict(self, qcis=None, sc_index=0):
+    def get_fixed_sc_proj_dict(self, qcis=None, sc_index=0):
         """Get the dictionary of small projectors for a given qcis."""
         if qcis.verbosity >= 2:
             print("getting the dict for channel =", sc_index)
         if qcis is None:
             raise ValueError("qcis cannot be None")
-        nP = qcis.nP
+        nP = qcis.fvs.nP
         irrep_set = qcis.fvs.irrep_set
         if (nP@nP != 0) and (nP@nP != 1) and (nP@nP != 2) and (nP@nP != 4):
             raise ValueError("momentum = ", nP, " is not yet supported")
         proj_dict = {}
         if (nP@nP == 0):
             group_str = 'OhP'
-        if (nP@nP == 1):
+        elif (nP@nP == 1):
             group_str = 'Dic4'
-        if (nP@nP == 2):
+        elif (nP@nP == 2):
             group_str = 'Dic2'
         for i in range(len(irrep_set)):
             irrep = irrep_set[i]
-            for irow in range(len(self.bTdict[group_str+'_'+irrep])):
+            for irrep_row in range(len(self.bTdict[group_str+'_'+irrep])):
                 if sc_index < qcis.n_two_channels:
-                    slot_index = 0
+                    three_slice_index = 0
                 else:
-                    cindex_shift = sc_index-qcis.n_two_channels
-                    slot_index = -1
+                    sc_index_shift = sc_index-qcis.n_two_channels
+                    three_slice_index = -1
                     for k in range(len(qcis.fcs.slices_by_three_masses)):
                         three_slice = qcis.fcs.slices_by_three_masses[k]
-                        if three_slice[0] <= cindex_shift < three_slice[1]:
-                            slot_index = k
+                        if three_slice[0] <= sc_index_shift < three_slice[1]:
+                            three_slice_index = k
                     if qcis.n_two_channels > 0:
-                        slot_index = slot_index+1
-                slice_index = 0
-                # Check issue in following slice code
-                # for three_slice in qcis.fcs.slices_by_three_masses:
-                #     if slot_index-qcis.n_two_channels > three_slice[1]:
-                #         slice_index = slice_index+1
-                nvec_arr = qcis.tbks_list[slot_index][slice_index].nvec_arr
+                        three_slice_index = three_slice_index+1
+                shell_index = 0
+                nvec_arr = qcis.tbks_list[three_slice_index][
+                    shell_index].nvec_arr
                 ellm_set = qcis.ellm_sets[sc_index]
-                proj = self.get_proj_kellm(nP=nP, irrep=irrep,
-                                           irow=irow,
-                                           nvec_arr=nvec_arr,
-                                           ellm_set=ellm_set)
+                kellm_proj = self.get_kellm_proj(nP=nP, irrep=irrep,
+                                                 irrep_row=irrep_row,
+                                                 nvec_arr=nvec_arr,
+                                                 ellm_set=ellm_set)
 
-                finalproj = self._clean_projector(proj)
-                if len(finalproj) != 0:
-                    proj_dict[(irrep, irow)] = finalproj
-                for keytmp in proj_dict:
-                    proj_tmp = proj_dict[keytmp]
-                    if (proj_tmp.imag == np.zeros(proj_tmp.shape)).all():
-                        proj_dict[keytmp] = proj_tmp.real
+                clean_kellm_proj = self._clean_projector(kellm_proj)
+                if len(clean_kellm_proj) != 0:
+                    proj_dict[(irrep, irrep_row)] = clean_kellm_proj
+        for key in proj_dict:
+            kellm_proj = proj_dict[key]
+            if (kellm_proj.imag == np.zeros(kellm_proj.shape)).all():
+                proj_dict[key] = kellm_proj.real
 
-        totalsize = len(qcis.kellm_spaces[sc_index][0])
+        kellm_shell_index = 0
+        total_size = len(qcis.kellm_spaces[sc_index][kellm_shell_index])
         proj_dict['best_irreps'], proj_dict['summary']\
-            = self._get_summary(proj_dict, group_str, qcis, totalsize)
+            = self._get_summary(proj_dict, group_str, qcis, total_size)
 
         return proj_dict
 
-    def get_proj_shell_dict(self, qcis=None, cindex=0, kellm_shell=None,
-                            shell_index=None):
+    def get_fixed_sc_and_shell_proj_dict(self, qcis=None, sc_index=0,
+                                         kellm_shell=None,
+                                         kellm_shell_index=None):
         """Get the dictionary of small projectors for one kellm_shell."""
         if qcis is None:
             raise ValueError("qcis cannot be None")
         if kellm_shell is None:
             raise ValueError("kellm_shell cannot be None")
-        nP = qcis.nP
+        nP = qcis.fvs.nP
         irrep_set = qcis.fvs.irrep_set
         if (nP@nP != 0) and (nP@nP != 1) and (nP@nP != 2):
             raise ValueError("momentum = ", nP, " is not yet supported")
@@ -1873,51 +1875,54 @@ class Groups:
             group_str = 'Dic2'
         for i in range(len(irrep_set)):
             irrep = irrep_set[i]
-            for irow in range(len(self.bTdict[group_str+'_'+irrep])):
-                if shell_index is None:
+            for irrep_row in range(len(self.bTdict[group_str+'_'+irrep])):
+                if kellm_shell_index is None:
                     shell_index = 0
-                if cindex < qcis.n_two_channels:
-                    slot_index = 0
                 else:
-                    cindex_shift = cindex-qcis.n_two_channels
-                    slot_index = -1
+                    shell_index = kellm_shell_index
+                if sc_index < qcis.n_two_channels:
+                    three_slice_index = 0
+                else:
+                    sc_index_shift = sc_index-qcis.n_two_channels
+                    three_slice_index = -1
                     for k in range(len(qcis.fcs.slices_by_three_masses)):
                         three_slice = qcis.fcs.slices_by_three_masses[k]
-                        if three_slice[0] <= cindex_shift < three_slice[1]:
-                            slot_index = k
+                        if three_slice[0] <= sc_index_shift < three_slice[1]:
+                            three_slice_index = k
                     if qcis.n_two_channels > 0:
-                        slot_index = slot_index+1
-                nvec_arr = qcis.tbks_list[slot_index][shell_index].nvec_arr
-                ellm_set = qcis.ellm_sets[cindex]
-                nshell = [int(kellm_shell[0]/len(ellm_set)),
-                          int(kellm_shell[1]/len(ellm_set))]
-                assert np.abs(int(kellm_shell[0]/len(ellm_set))
+                        three_slice_index = three_slice_index+1
+                nvec_arr = qcis.tbks_list[three_slice_index][
+                    shell_index].nvec_arr
+                ellm_set = qcis.ellm_sets[sc_index]
+                nshell = [kellm_shell[0]//len(ellm_set),
+                          kellm_shell[1]//len(ellm_set)]
+                assert np.abs(kellm_shell[0]//len(ellm_set)
                               - kellm_shell[0]/len(ellm_set)) < EPSILON8
-                assert np.abs(int(kellm_shell[1]/len(ellm_set))
+                assert np.abs(kellm_shell[1]//len(ellm_set)
                               - kellm_shell[1]/len(ellm_set)) < EPSILON8
-                nvec_arr = qcis.tbks_list[slot_index][shell_index].nvec_arr[
-                    nshell[0]:nshell[1]]
-                ellm_set = qcis.ellm_sets[cindex]
-                proj = self.get_proj_kellm(nP=nP, irrep=irrep,
-                                           irow=irow,
-                                           nvec_arr=nvec_arr,
-                                           ellm_set=ellm_set)
+                nvec_arr = qcis.tbks_list[three_slice_index][shell_index]\
+                    .nvec_arr[nshell[0]:nshell[1]]
+                ellm_set = qcis.ellm_sets[sc_index]
+                kellm_proj = self.get_kellm_proj(nP=nP, irrep=irrep,
+                                                 irrep_row=irrep_row,
+                                                 nvec_arr=nvec_arr,
+                                                 ellm_set=ellm_set)
 
-                finalproj = self._clean_projector(proj)
-                if len(finalproj) != 0:
-                    proj_dict[(irrep, irow)] = finalproj
-                for keytmp in proj_dict:
-                    proj_tmp = proj_dict[keytmp]
-                    if (proj_tmp.imag == np.zeros(proj_tmp.shape)).all():
-                        proj_dict[keytmp] = proj_tmp.real
+                clean_kellm_proj = self._clean_projector(kellm_proj)
+                if len(clean_kellm_proj) != 0:
+                    proj_dict[(irrep, irrep_row)] = clean_kellm_proj
+        for key in proj_dict:
+            kellm_proj = proj_dict[key]
+            if (kellm_proj.imag == np.zeros(kellm_proj.shape)).all():
+                proj_dict[key] = kellm_proj.real
         return proj_dict
 
-    def get_proj_full_dict(self, qcis=None):
+    def get_full_proj_dict(self, qcis=None):
         """Get the dictionary of small projectors for the entire qcis."""
         if qcis is None:
             raise ValueError("qcis cannot be None")
         proj_dict = {}
-        nP = qcis.nP
+        nP = qcis.fvs.nP
         if (nP@nP == 0):
             group_str = 'OhP'
         if (nP@nP == 1):
@@ -1926,41 +1931,45 @@ class Groups:
             group_str = 'Dic2'
         for i in range(len(qcis.fvs.irrep_set)):
             irrep = qcis.fvs.irrep_set[i]
-            for irow in range(len(self.bTdict[group_str+'_'+irrep])):
+            for irrep_row in range(len(self.bTdict[group_str+'_'+irrep])):
                 proj_list = []
-                for cindex in range(qcis.n_channels):
-                    if cindex < qcis.n_two_channels:
-                        slot_index = 0
+                for sc_index in range(qcis.n_channels):
+                    if sc_index < qcis.n_two_channels:
+                        three_slice_index = 0
                     else:
-                        cindex_shift = cindex-qcis.n_two_channels
-                        slot_index = -1
+                        sc_index_shift = sc_index-qcis.n_two_channels
+                        three_slice_index = -1
                         for k in range(len(qcis.fcs.slices_by_three_masses)):
                             three_slice = qcis.fcs.slices_by_three_masses[k]
-                            if three_slice[0] <= cindex_shift < three_slice[1]:
-                                slot_index = k
+                            if (three_slice[0] <= sc_index_shift
+                               < three_slice[1]):
+                                three_slice_index = k
                         if qcis.n_two_channels > 0:
-                            slot_index = slot_index+1
-                    slice_index = 0
-                    nvec_arr = qcis.tbks_list[slot_index][slice_index].nvec_arr
-                    ellm_set = qcis.ellm_sets[cindex]
-                    proj_tmp = self.get_proj_kellm(nP=nP, irrep=irrep,
-                                                   irow=irow,
-                                                   nvec_arr=nvec_arr,
-                                                   ellm_set=ellm_set)
-                    proj_list = proj_list+[proj_tmp]
+                            three_slice_index = three_slice_index+1
+                    shell_index = 0
+                    nvec_arr = qcis.tbks_list[three_slice_index][
+                        shell_index].nvec_arr
+                    ellm_set = qcis.ellm_sets[sc_index]
+                    kellm_proj = self.get_kellm_proj(nP=nP, irrep=irrep,
+                                                     irrep_row=irrep_row,
+                                                     nvec_arr=nvec_arr,
+                                                     ellm_set=ellm_set)
+                    proj_list = proj_list+[kellm_proj]
                 proj = block_diag(*proj_list)
-                finalproj = self._clean_projector(proj)
-                if len(finalproj) != 0:
-                    proj_dict[(irrep, irow)] = finalproj
-                for keytmp in proj_dict:
-                    proj_tmp = proj_dict[keytmp]
-                    if (proj_tmp.imag == np.zeros(proj_tmp.shape)).all():
-                        proj_dict[keytmp] = proj_tmp.real
+                clean_proj = self._clean_projector(proj)
+                if len(clean_proj) != 0:
+                    proj_dict[(irrep, irrep_row)] = clean_proj
+        for key in proj_dict:
+            proj = proj_dict[key]
+            if (proj.imag == np.zeros(proj.shape)).all():
+                proj_dict[key] = proj.real
 
-        totalsize = 0
-        for cindex in range(qcis.n_channels):
-            totalsize = totalsize+len(qcis.kellm_spaces[cindex][0])
+        total_size = 0
+        kellm_shell_index = 0
+        for sc_index in range(qcis.n_channels):
+            total_size += len(qcis.kellm_spaces[sc_index][
+                kellm_shell_index])
         proj_dict['best_irreps'], proj_dict['summary']\
-            = self._get_summary(proj_dict, group_str, qcis, totalsize)
+            = self._get_summary(proj_dict, group_str, qcis, total_size)
 
         return proj_dict

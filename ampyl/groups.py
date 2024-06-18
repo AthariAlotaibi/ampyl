@@ -1819,17 +1819,7 @@ class Groups:
         for i in range(len(irrep_set)):
             irrep = irrep_set[i]
             for irrep_row in range(len(self.bTdict[group_str+'_'+irrep])):
-                if sc_index < qcis.n_two_channels:
-                    three_slice_index = 0
-                else:
-                    sc_index_shift = sc_index-qcis.n_two_channels
-                    three_slice_index = -1
-                    for k in range(len(qcis.fcs.slices_by_three_masses)):
-                        three_slice = qcis.fcs.slices_by_three_masses[k]
-                        if three_slice[0] <= sc_index_shift < three_slice[1]:
-                            three_slice_index = k
-                    if qcis.n_two_channels > 0:
-                        three_slice_index = three_slice_index+1
+                three_slice_index = self.qcis.sc_to_three_slice[sc_index]
                 shell_index = 0
                 nvec_arr = qcis.tbks_list[three_slice_index][
                     shell_index].nvec_arr
@@ -1880,17 +1870,7 @@ class Groups:
                     shell_index = 0
                 else:
                     shell_index = kellm_shell_index
-                if sc_index < qcis.n_two_channels:
-                    three_slice_index = 0
-                else:
-                    sc_index_shift = sc_index-qcis.n_two_channels
-                    three_slice_index = -1
-                    for k in range(len(qcis.fcs.slices_by_three_masses)):
-                        three_slice = qcis.fcs.slices_by_three_masses[k]
-                        if three_slice[0] <= sc_index_shift < three_slice[1]:
-                            three_slice_index = k
-                    if qcis.n_two_channels > 0:
-                        three_slice_index = three_slice_index+1
+                three_slice_index = self.qcis.sc_to_three_slice[sc_index]
                 nvec_arr = qcis.tbks_list[three_slice_index][
                     shell_index].nvec_arr
                 ellm_set = qcis.ellm_sets[sc_index]
@@ -1934,18 +1914,7 @@ class Groups:
             for irrep_row in range(len(self.bTdict[group_str+'_'+irrep])):
                 proj_list = []
                 for sc_index in range(qcis.n_channels):
-                    if sc_index < qcis.n_two_channels:
-                        three_slice_index = 0
-                    else:
-                        sc_index_shift = sc_index-qcis.n_two_channels
-                        three_slice_index = -1
-                        for k in range(len(qcis.fcs.slices_by_three_masses)):
-                            three_slice = qcis.fcs.slices_by_three_masses[k]
-                            if (three_slice[0] <= sc_index_shift
-                               < three_slice[1]):
-                                three_slice_index = k
-                        if qcis.n_two_channels > 0:
-                            three_slice_index = three_slice_index+1
+                    three_slice_index = self.qcis.sc_to_three_slice[sc_index]
                     shell_index = 0
                     nvec_arr = qcis.tbks_list[three_slice_index][
                         shell_index].nvec_arr

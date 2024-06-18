@@ -396,10 +396,28 @@ class Interpolable:
                           project, irrep):
         L_grid = np.arange(Lmin, Lmax+EPSILON4, Lstep)
         E_grid = np.arange(Emin, Emax+EPSILON4, Estep)
-        max_interp_matrix_shape = (self.get_value(E=Emax, L=Lmax,
-                                                  project=project,
-                                                  irrep=irrep)).shape
-        max_interp_dim = max_interp_matrix_shape[0]
+        nP = self.qcis.fvs.nP
+        if nP@nP == 0:
+            tbks_sub_indices = self.qcis.get_tbks_sub_indices(Emax, Lmax)
+            projected_axis_index = 1
+            max_interp_dim = 0
+            for sc_index in range(self.qcis.n_channels):
+                three_slice_index = self.qcis.sc_to_three_slice[sc_index]
+                tbks_sub_index = tbks_sub_indices[three_slice_index]
+                proj_dict_list = self.qcis.proj_dicts_by_sc_and_shellset[
+                    sc_index][tbks_sub_index]
+                for proj_dict in proj_dict_list:
+                    try:
+                        projected_size =\
+                            proj_dict[irrep].shape[projected_axis_index]
+                        max_interp_dim += projected_size
+                    except KeyError:
+                        continue
+        else:
+            max_interp_matrix_shape = (self.get_value(E=Emax, L=Lmax,
+                                                      project=project,
+                                                      irrep=irrep)).shape
+            max_interp_dim = max_interp_matrix_shape[0]
         interp_data_list = []
         for _ in range(max_interp_dim):
             interp_mat_row = []
@@ -668,10 +686,10 @@ class Interpolable:
                               cindex_row, cindex_col,
                               row_shell_index, col_shell_index):
         nP = self.qcis.fvs.nP
-        three_slice_index_row\
-            = self.qcis._get_three_slice_index(cindex_row)
-        three_slice_index_col\
-            = self.qcis._get_three_slice_index(cindex_col)
+        three_slice_index_row =\
+            self.qcis.sc_to_three_slice[cindex_row]
+        three_slice_index_col =\
+            self.qcis.sc_to_three_slice[cindex_col]
         if not (three_slice_index_row == three_slice_index_col == 0):
             raise ValueError("only one mass slice is supported in G")
         three_slice_index = three_slice_index_row

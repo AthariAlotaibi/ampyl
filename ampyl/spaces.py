@@ -989,6 +989,7 @@ class QCIndexSpace:
         self.param_structure = self.get_param_structure()
         self.populate_all_nvec_arr()
         self.ell_sets = self._get_ell_sets()
+        self.sc_to_three_slice = self._get_sc_to_three_slice()
         if not self.spin_half:
             self.populate_all_kellm_spaces()
             self.populate_all_proj_dicts()
@@ -1217,6 +1218,37 @@ class QCIndexSpace:
             ell_sets = ell_sets+[ell_set]
         return ell_sets[1:]
 
+    def _get_sc_to_three_slice(self):
+        """Get the spectator channel to three-slice mapping."""
+        last_loc = -1
+        offset = 1
+        three_channel_max =\
+            self.fcs.slices_by_three_masses[last_loc][last_loc]-offset
+        no_two_channels = self.n_two_channels == 0
+
+        sc_to_three_slice = []
+        for sc_index in range(self.n_channels):
+            sc_too_high = sc_index > three_channel_max
+            if no_two_channels and sc_too_high:
+                raise ValueError(f"using sc_index = {sc_index} with "
+                                 f"three_slices = "
+                                 f"{self.fcs.slices_by_three_masses} "
+                                 f"and (no two-particle channels) "
+                                 f"is not allowed")
+            if sc_index < self.n_two_channels:
+                three_slice_index = 0
+            else:
+                sc_index_shift = sc_index-self.n_two_channels
+                three_slice_index = -1
+                for k in range(len(self.fcs.slices_by_three_masses)):
+                    three_slice = self.fcs.slices_by_three_masses[k]
+                    if three_slice[0] <= sc_index_shift < three_slice[1]:
+                        three_slice_index = k
+                if self.n_two_channels > 0:
+                    three_slice_index = three_slice_index+1
+            sc_to_three_slice.append(three_slice_index)
+        return sc_to_three_slice
+
     def populate_all_kellm_spaces(self):
         """Populate all kellm spaces."""
         if self.verbosity >= 2:
@@ -1227,18 +1259,8 @@ class QCIndexSpace:
         kellm_shells = []
         kellm_spaces = []
         for sc_index in range(self.n_channels):
-            if sc_index < self.n_two_channels:
-                slot_index = 0
-            else:
-                sc_index_shift = sc_index-self.n_two_channels
-                slot_index = -1
-                for k in range(len(self.fcs.slices_by_three_masses)):
-                    three_slice = self.fcs.slices_by_three_masses[k]
-                    if three_slice[0] <= sc_index_shift < three_slice[1]:
-                        slot_index = k
-                if self.n_two_channels > 0:
-                    slot_index = slot_index+1
-            tbks_fixed_masses_list = self.tbks_list[slot_index]
+            three_slice_index = self.sc_to_three_slice[sc_index]
+            tbks_fixed_masses_list = self.tbks_list[three_slice_index]
             ellm_set = self.ellm_sets[sc_index]
             kellm_shells_entry = []
             kellm_spaces_entry = []
@@ -1349,8 +1371,7 @@ class QCIndexSpace:
                  nvecset_batched, nvecset_ident_batched]\
                     = self._reps_and_batches_three(nvecset_arr, nvecset_SQs,
                                                    nvecset_ident,
-                                                   nvecset_ident_SQs,
-                                                   nP)
+                                                   nvecset_ident_SQs, nP)
             else:
                 [m1, m2, Emax, nP, Lmax, nvec_cutoff, nvecs]\
                     = self._load_ni_data_two(fc)
@@ -1376,27 +1397,21 @@ class QCIndexSpace:
                                                  nvecset_ident,
                                                  nvecset_ident_SQs, nP)
 
-            nvecset_arr_all = nvecset_arr_all+[nvecset_arr]
-            nvecset_SQs_all = nvecset_SQs_all+[nvecset_SQs]
-            nvecset_reps_all = nvecset_reps_all+[nvecset_reps]
-            nvecset_SQreps_all = nvecset_SQreps_all+[nvecset_SQreps]
-            nvecset_inds_all = nvecset_inds_all+[nvecset_inds]
-            nvecset_counts_all = nvecset_counts_all+[nvecset_counts]
-            nvecset_batched_all = nvecset_batched_all+[nvecset_batched]
+            nvecset_arr_all.append(nvecset_arr)
+            nvecset_SQs_all.append(nvecset_SQs)
+            nvecset_reps_all.append(nvecset_reps)
+            nvecset_SQreps_all.append(nvecset_SQreps)
+            nvecset_inds_all.append(nvecset_inds)
+            nvecset_counts_all.append(nvecset_counts)
+            nvecset_batched_all.append(nvecset_batched)
 
-            nvecset_ident_all = nvecset_ident_all\
-                + [nvecset_ident]
-            nvecset_ident_SQs_all = nvecset_ident_SQs_all+[nvecset_ident_SQs]
-            nvecset_ident_reps_all = nvecset_ident_reps_all\
-                + [nvecset_ident_reps]
-            nvecset_ident_SQreps_all = nvecset_ident_SQreps_all\
-                + [nvecset_ident_SQreps]
-            nvecset_ident_inds_all = nvecset_ident_inds_all\
-                + [nvecset_ident_inds]
-            nvecset_ident_counts_all = nvecset_ident_counts_all\
-                + [nvecset_ident_counts]
-            nvecset_ident_batched_all = nvecset_ident_batched_all\
-                + [nvecset_ident_batched]
+            nvecset_ident_all.append(nvecset_ident)
+            nvecset_ident_SQs_all.append(nvecset_ident_SQs)
+            nvecset_ident_reps_all.append(nvecset_ident_reps)
+            nvecset_ident_SQreps_all.append(nvecset_ident_SQreps)
+            nvecset_ident_inds_all.append(nvecset_ident_inds)
+            nvecset_ident_counts_all.append(nvecset_ident_counts)
+            nvecset_ident_batched_all.append(nvecset_ident_batched)
         self.nvecset_arr = nvecset_arr_all
         self.nvecset_SQs = nvecset_SQs_all
         self.nvecset_reps = nvecset_reps_all
@@ -1561,21 +1576,6 @@ class QCIndexSpace:
         else:
             nPspec = -1.0
         return nPspec
-
-    def _get_three_slice_index(self, sc_index):
-        three_channel_max = self.fcs.slices_by_three_masses[-1][-1]-1
-        if ((self.n_two_channels == 0) and (sc_index > three_channel_max)):
-            raise ValueError(f"using cindex = {sc_index} with three_slices = "
-                             f"{self.fcs.slices_by_three_masses} "
-                             f"and (no two-particle channels) "
-                             f"is not allowed")
-        slice_index = 0
-        for three_slice in self.fcs.slices_by_three_masses:
-            if sc_index > three_slice[1]:
-                slice_index = slice_index+1
-        if self.n_two_channels > 0:
-            slice_index = slice_index+1
-        return slice_index
 
     def get_tbks_sub_indices(self, E, L):
         """Get the indices of the relevant three-body kinematics spaces."""

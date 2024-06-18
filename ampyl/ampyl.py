@@ -83,8 +83,7 @@ class K:
     def _get_masks_and_shells(self, E, L, tbks_entry, cindex, slice_index):
         nP = self.qcis.fvs.nP
         mask_slices = None
-        three_slice_index\
-            = self.qcis._get_three_slice_index(cindex)
+        three_slice_index = self.qcis.sc_to_three_slice[cindex]
         if nP@nP == 0:
             slice_entry = tbks_entry.shells[slice_index]
         else:

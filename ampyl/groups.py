@@ -1819,7 +1819,7 @@ class Groups:
         for i in range(len(irrep_set)):
             irrep = irrep_set[i]
             for irrep_row in range(len(self.bTdict[group_str+'_'+irrep])):
-                three_slice_index = self.qcis.sc_to_three_slice[sc_index]
+                three_slice_index = qcis.sc_to_three_slice[sc_index]
                 shell_index = 0
                 nvec_arr = qcis.tbks_list[three_slice_index][
                     shell_index].nvec_arr
@@ -1870,7 +1870,7 @@ class Groups:
                     shell_index = 0
                 else:
                     shell_index = kellm_shell_index
-                three_slice_index = self.qcis.sc_to_three_slice[sc_index]
+                three_slice_index = qcis.sc_to_three_slice[sc_index]
                 nvec_arr = qcis.tbks_list[three_slice_index][
                     shell_index].nvec_arr
                 ellm_set = qcis.ellm_sets[sc_index]
@@ -1914,7 +1914,7 @@ class Groups:
             for irrep_row in range(len(self.bTdict[group_str+'_'+irrep])):
                 proj_list = []
                 for sc_index in range(qcis.n_channels):
-                    three_slice_index = self.qcis.sc_to_three_slice[sc_index]
+                    three_slice_index = qcis.sc_to_three_slice[sc_index]
                     shell_index = 0
                     nvec_arr = qcis.tbks_list[three_slice_index][
                         shell_index].nvec_arr

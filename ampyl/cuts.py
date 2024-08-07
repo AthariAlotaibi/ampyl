@@ -59,8 +59,9 @@ class Interpolable:
     def __init__(self, qcis=QCIndexSpace()):
         self.qcis = qcis
         three_scheme = self.qcis.tbis.three_scheme
-        if (three_scheme == 'original pole')\
-           or (three_scheme == 'relativistic pole'):
+        alpha_beta_scheme = (three_scheme == 'original pole')\
+            or (three_scheme == 'relativistic pole')
+        if alpha_beta_scheme:
             [self.alpha, self.beta] = self.qcis.tbis.scheme_data
         self.all_relevant_nvecSQ_lists = {}
         self.interp_data_lists = {}
@@ -75,8 +76,8 @@ class Interpolable:
         self.smart_textures_lists = {}
         self.complement_textures_lists = {}
 
-    def build_interpolator(self, Emin, Emax, Estep,
-                           Lmin, Lmax, Lstep, project, irrep):
+    def build_interpolator(self, Emin, Emax, Estep, Lmin, Lmax, Lstep,
+                           project, irrep):
         """
         Builds an interpolator.
 
@@ -103,7 +104,7 @@ class Interpolable:
         :type irrep: tuple
         """
         assert project
-        nP = self.qcis.nP
+        nP = self.qcis.fvs.nP
         if nP@nP != 0:
             use_cob_matrices = QC_IMPL_DEFAULTS['use_cob_matrices']
             if 'use_cob_matrices' in self.qcis.fvs.qc_impl:
@@ -113,6 +114,7 @@ class Interpolable:
             if 'reduce_size' in self.qcis.fvs.qc_impl:
                 reduce_size = self.qcis.fvs.qc_impl['reduce_size']
             assert reduce_size is False
+
         # Generate grids and interp structure
         L_grid, E_grid, max_interp_dim, interp_data_list = self\
             ._grids_and_interp(Emin, Emax, Estep, Lmin, Lmax, Lstep,
@@ -394,10 +396,28 @@ class Interpolable:
                           project, irrep):
         L_grid = np.arange(Lmin, Lmax+EPSILON4, Lstep)
         E_grid = np.arange(Emin, Emax+EPSILON4, Estep)
-        max_interp_matrix_shape = (self.get_value(E=Emax, L=Lmax,
-                                                  project=project,
-                                                  irrep=irrep)).shape
-        max_interp_dim = max_interp_matrix_shape[0]
+        nP = self.qcis.fvs.nP
+        if nP@nP == 0:
+            tbks_sub_indices = self.qcis.get_tbks_sub_indices(Emax, Lmax)
+            projected_axis_index = 1
+            max_interp_dim = 0
+            for sc_index in range(self.qcis.n_channels):
+                three_slice_index = self.qcis.sc_to_three_slice[sc_index]
+                tbks_sub_index = tbks_sub_indices[three_slice_index]
+                proj_dict_list = self.qcis.proj_dicts_by_sc_and_shellset[
+                    sc_index][tbks_sub_index]
+                for proj_dict in proj_dict_list:
+                    try:
+                        projected_size =\
+                            proj_dict[irrep].shape[projected_axis_index]
+                        max_interp_dim += projected_size
+                    except KeyError:
+                        continue
+        else:
+            max_interp_matrix_shape = (self.get_value(E=Emax, L=Lmax,
+                                                      project=project,
+                                                      irrep=irrep)).shape
+            max_interp_dim = max_interp_matrix_shape[0]
         interp_data_list = []
         for _ in range(max_interp_dim):
             interp_mat_row = []
@@ -420,7 +440,7 @@ class Interpolable:
             for shell_index in range(len(self.qcis.tbks_list[0][0].shells)):
                 shell = self.qcis.tbks_list[0][0].shells[shell_index]
                 try:
-                    transposed_proj_dict = self.qcis.sc_proj_dicts[
+                    transposed_proj_dict = self.qcis.proj_dicts_by_sc[
                         spectator_channel_index][irrep][
                         ang_mom_dim*shell[0]:ang_mom_dim*shell[1]].T
                     support_rows = []
@@ -431,7 +451,7 @@ class Interpolable:
                                 + [row_index]
                     proj_candidate = transposed_proj_dict[support_rows].T
                     # only purpose of the following is to trigger KeyError
-                    self.qcis.sc_proj_dicts_by_shell[
+                    self.qcis.proj_dicts_by_sc_and_shellset[
                         spectator_channel_index][0][shell_index][irrep]
                     dim_with_shell_index_single_sc.\
                         append([(proj_candidate.shape)[1], shell_index])
@@ -512,7 +532,7 @@ class Interpolable:
             raise ValueError("get_value called with E > Emax")
         if L > Lmax:
             raise ValueError("get_value called with L > Lmax")
-        nP = self.qcis.nP
+        nP = self.qcis.fvs.nP
         if self.qcis.fcs.n_three_slices != 1:
             raise ValueError("only n_three_slices = 1 is supported")
         cindex_row = cindex_col = 0
@@ -520,11 +540,6 @@ class Interpolable:
            and (not (irrep in self.qcis.proj_dict.keys()))):
             raise ValueError("irrep "+str(irrep)+" not in "
                              + "qcis.proj_dict.keys()")
-
-        masses = self.qcis.fcs.sc_list_sorted[
-            self.qcis.fcs.slices_by_three_masses[0][0]].masses_indexed
-        m1 = masses[0]
-
         if nP@nP == 0:
             if self.qcis.verbosity >= 2:
                 print('nP = [0 0 0] indexing')
@@ -542,8 +557,8 @@ class Interpolable:
         else:
             if self.qcis.verbosity >= 2:
                 print('nP != [0 0 0] indexing')
-            mspec = m1
-            ibest = self.qcis._get_ibest(E, L)
+            mspec, m2, m3 = self._extract_masses()
+            # ibest = self.qcis._get_ibest(E, L)
             ibest = 0
             warnings.warn(f"\n{bcolors.WARNING}"
                           "ibest is set to 0. This is a temporary fix."
@@ -557,7 +572,9 @@ class Interpolable:
             omk_arr = np.sqrt(mspec**2+kvecSQ_arr)
             Pvec = TWOPI*nP/L
             PmkSQ_arr = ((Pvec-kvec_arr)**2).sum(axis=1)
-            mask = (E-omk_arr)**2-PmkSQ_arr > 0.0
+            threshold = m2+m3
+            zero_support_point = self._get_zero_support_point(self, threshold)
+            mask = (E-omk_arr)**2-PmkSQ_arr > zero_support_point
             if self.qcis.verbosity >= 2:
                 print('mask =')
                 print(mask)
@@ -611,9 +628,13 @@ class Interpolable:
                 nvecSQs_block_tmp = nvecSQs_inner[1:]
                 nvecSQs_outer_row = nvecSQs_outer_row+[nvecSQs_block_tmp]
             nvecSQs_final = nvecSQs_final+[nvecSQs_outer_row]
-
         nvecSQs_final = nvecSQs_final[1:]
         return nvecSQs_final
+
+    def _get_zero_support_point(self, threshold):
+        alpha = self.alpha
+        beta = self.beta
+        return (1.0+alpha)*threshold**2/4.0-beta*((3.0-alpha)*threshold**2/4.0)
 
     def _get_shell_nvecSQs_projs(self, E=5.0, L=5.0,
                                  cindex_row=None, cindex_col=None,
@@ -623,10 +644,10 @@ class Interpolable:
                                  row_shell_index=None,
                                  col_shell_index=None,
                                  project=False, irrep=None):
-        nP = self.qcis.nP
+        nP = self.qcis.fvs.nP
 
         mask_row_shells, mask_col_shells, row_shell, col_shell\
-            = self._get_masks_and_shells(E, nP, L, tbks_entry,
+            = self._get_masks_and_shells(E, L, tbks_entry,
                                          cindex_row, cindex_col,
                                          row_shell_index, col_shell_index)
         if project:
@@ -638,20 +659,21 @@ class Interpolable:
                                   "ibest is set to 0. This is a temporary fix."
                                   f"{bcolors.ENDC}")
                     proj_tmp_right = np.array(self.qcis
-                                              .sc_proj_dicts_by_shell[
+                                              .proj_dicts_by_sc_and_shellset[
                                                   sc_index_col][ibest]
                                               )[mask_col_shells][
                                                   col_shell_index][irrep]
                     proj_tmp_left = np.conjugate((
                         np.array(self.qcis.
-                                 sc_proj_dicts_by_shell[sc_index_row][ibest]
+                                 proj_dicts_by_sc_and_shellset[
+                                     sc_index_row][ibest]
                                  )[mask_row_shells][row_shell_index][irrep]
                     ).T)
                 else:
-                    proj_tmp_right = self.qcis.sc_proj_dicts_by_shell[
+                    proj_tmp_right = self.qcis.proj_dicts_by_sc_and_shellset[
                         sc_index_col][0][col_shell_index][irrep]
                     proj_tmp_left = np.conjugate((
-                        self.qcis.sc_proj_dicts_by_shell[
+                        self.qcis.proj_dicts_by_sc_and_shellset[
                             sc_index_row][0][row_shell_index][irrep]
                         ).T)
             except KeyError:
@@ -660,13 +682,14 @@ class Interpolable:
             .get_nvecSQ_mat_shells(tbks_entry, row_shell, col_shell)
         return [nvecSQ_mat_shells, proj_tmp_left, proj_tmp_right]
 
-    def _get_masks_and_shells(self, E, nP, L, tbks_entry,
+    def _get_masks_and_shells(self, E, L, tbks_entry,
                               cindex_row, cindex_col,
                               row_shell_index, col_shell_index):
-        three_slice_index_row\
-            = self.qcis._get_three_slice_index(cindex_row)
-        three_slice_index_col\
-            = self.qcis._get_three_slice_index(cindex_col)
+        nP = self.qcis.fvs.nP
+        three_slice_index_row =\
+            self.qcis.sc_to_three_slice[cindex_row]
+        three_slice_index_col =\
+            self.qcis.sc_to_three_slice[cindex_col]
         if not (three_slice_index_row == three_slice_index_col == 0):
             raise ValueError("only one mass slice is supported in G")
         three_slice_index = three_slice_index_row
@@ -698,16 +721,15 @@ class Interpolable:
         if 'reduce_size' in self.qcis.fvs.qc_impl:
             reduce_size = self.qcis.fvs.qc_impl['reduce_size']
         if reduce_size:
-            masses = self.qcis.fcs.sc_list_sorted[
-                self.qcis.fcs.slices_by_three_masses[three_slice_index][0]].\
-                masses_indexed
-            m_spec = masses[0]
+            mspec, m2, m3 = self._extract_masses()
             kvecSQ_arr = FOURPI2*tbks_entry.nvecSQ_arr/L**2
             kvec_arr = TWOPI*tbks_entry.nvec_arr/L
-            omk_arr = np.sqrt(m_spec**2+kvecSQ_arr)
+            omk_arr = np.sqrt(mspec**2+kvecSQ_arr)
             Pvec = TWOPI*nP/L
             PmkSQ_arr = ((Pvec-kvec_arr)**2).sum(axis=1)
-            mask_row = (E-omk_arr)**2-PmkSQ_arr > 0.0
+            threshold = m2+m3
+            zero_support_point = self._get_zero_support_point(self, threshold)
+            mask_row = (E-omk_arr)**2-PmkSQ_arr > zero_support_point
             row_shells = tbks_entry.shells
             mask_row_shells = []
             for row_shell in row_shells:
@@ -756,8 +778,12 @@ class Interpolable:
         return all_nvecSQs
 
     def _extract_masses(self):
-        masses = self.qcis.fcs.sc_list_sorted[
-            self.qcis.fcs.slices_by_three_masses[0][0]].masses_indexed
+        sc_list_sorted = self.qcis.fcs.sc_list_sorted
+        slices_by_three_masses = self.qcis.fcs.slices_by_three_masses
+        three_slice_index = 0
+        inslice_index = 0
+        sc_index = slices_by_three_masses[three_slice_index][inslice_index]
+        masses = sc_list_sorted[sc_index].masses_indexed
         [m1, m2, m3] = masses
         return m1, m2, m3
 
@@ -872,13 +898,13 @@ class Interpolable:
                         n2vecSQ = nvecSQ_entry[1]
                         n3vecSQ = nvecSQ_entry[2]
                         removal_at_Lmin = self\
-                            .get_pole_candidate(Lmin_tmp,
-                                                n1vecSQ, n2vecSQ, n3vecSQ,
-                                                m1, m2, m3)
+                            .get_pole_candidate(
+                                Lmin_tmp, n1vecSQ, n2vecSQ, n3vecSQ,
+                                m1, m2, m3)
                         removal_at_Lmax = self\
-                            .get_pole_candidate(Lmax_tmp,
-                                                n1vecSQ, n2vecSQ, n3vecSQ,
-                                                m1, m2, m3)
+                            .get_pole_candidate(
+                                Lmax_tmp, n1vecSQ, n2vecSQ, n3vecSQ,
+                                m1, m2, m3)
                         if ((Emin_tmp < removal_at_Lmin < Emax_tmp)
                            or (Emin_tmp < removal_at_Lmax < Emax_tmp)):
                             nvecSQs_all_keeps = nvecSQs_all_keeps\
@@ -890,9 +916,8 @@ class Interpolable:
             print(nvecSQs_keep)
             Lvals_tmp = [Lmin_tmp+EPSILON4, Lmax_tmp-EPSILON4]
             for Ltmp in Lvals_tmp:
-                Etmp = self._get_pole_candidate_eps(Ltmp,
-                                                    n1vecSQ, n2vecSQ,
-                                                    n3vecSQ, m1, m2, m3)
+                Etmp = self._get_pole_candidate_eps(
+                    Ltmp, n1vecSQ, n2vecSQ, n3vecSQ, m1, m2, m3)
                 if Etmp < Emax:
                     try:
                         matrix_tmp = self.get_value(E=Etmp, L=Ltmp,
@@ -1023,7 +1048,8 @@ class Interpolable:
             complement_textures_list.append(complement_textures)
         return smart_poles_list, smart_textures_list, complement_textures_list
 
-    def get_value(self, E=5.0, L=5.0, project=False, irrep=None):
+    def get_value(self, E=5.0, L=5.0, project=False, irrep=None,
+                  short_string='g'):
         """Build the interpolable matrix in a shell-based way."""
         Emax = self.qcis.Emax
         Lmax = self.qcis.Lmax
@@ -1031,15 +1057,18 @@ class Interpolable:
             raise ValueError("get_value called with E > Emax")
         if L > Lmax:
             raise ValueError("get_value called with L > Lmax")
-        interpolate = QC_IMPL_DEFAULTS['g_interpolate']
-        smart_interpolate = QC_IMPL_DEFAULTS['g_smart_interpolate']
-        if 'g_interpolate' in self.qcis.fvs.qc_impl:
-            interpolate = self.qcis.fvs.qc_impl['g_interpolate']
-        if 'g_smart_interpolate' in self.qcis.fvs.qc_impl:
+        interpolate_string = f'{short_string}_interpolate'
+        smart_interpolate_string = f'{short_string}_smart_interpolate'
+        interpolate = QC_IMPL_DEFAULTS[interpolate_string]
+        smart_interpolate = QC_IMPL_DEFAULTS[smart_interpolate_string]
+        if interpolate_string in self.qcis.fvs.qc_impl:
+            interpolate = self.qcis.fvs.qc_impl[interpolate_string]
+        if smart_interpolate_string in self.qcis.fvs.qc_impl:
             smart_interpolate = self.qcis.fvs.qc_impl[
-                'g_smart_interpolate']
+                smart_interpolate_string]
         if interpolate and smart_interpolate:
-            raise ValueError("g_interpolate and g_smart_interpolate "
+            raise ValueError(f"{interpolate_string} and "
+                             f"{smart_interpolate_string} "
                              "cannot both be True")
         if smart_interpolate:
             final_value = self._get_value_smart_interpolated(E, L, irrep)
@@ -1099,10 +1128,6 @@ class Interpolable:
         if self.cob_list_lens != {} and len(self.cob_matrix_lists[irrep]) != 0:
             if ((len(cob_matrix) != len(smooth_value))
                or (len(cob_matrix) != len(smooth_value.T))):
-                # smooth_to_discard = smooth_value[len(cob_matrix):]
-                # smooth_to_discard_T = (smooth_value.T)[len(cob_matrix):]
-                # epsilon = np.sum(smooth_to_discard**2)\
-                #    + np.sum(smooth_to_discard_T**2)
                 smooth_value = smooth_value[:len(cob_matrix)]
                 smooth_value_T = (smooth_value.T)[:len(cob_matrix)]
                 smooth_value = smooth_value_T.T
@@ -1192,7 +1217,7 @@ class G(Interpolable):
     """
 
     def _get_value_not_interpolated(self, E, L, project, irrep):
-        nP = self.qcis.nP
+        nP = self.qcis.fvs.nP
         if self.qcis.verbosity >= 2:
             self._g_verbose_a(E, L, nP)
         if self.qcis.fcs.n_three_slices != 1:
@@ -1202,10 +1227,12 @@ class G(Interpolable):
             print('representatives of three_slice:')
             print('    cindex_row =', cindex_row,
                   ', cindex_col =', cindex_col)
-        if (not ((irrep is None) and (project is False))
-           and (not (irrep in self.qcis.proj_dict.keys()))):
+        not_projecting = (irrep is None) and (project is False)
+        projecting = not not_projecting
+        irrep_not_in_keys = irrep not in self.qcis.proj_dict.keys()
+        if projecting and irrep_not_in_keys:
             raise ValueError("irrep "+str(irrep)+" not in "
-                             + "qcis.proj_dict.keys()")
+                             "qcis.proj_dict.keys()")
         tbks_entry, slices = self._get_entry_and_slices(E, L, nP)
         g_final = self._get_value_from_tbks(E, L, project, irrep,
                                             cindex_col, cindex_row,
@@ -1233,9 +1260,6 @@ class G(Interpolable):
         print('G = YY*H1*H2\n    * '+sf+'\n    * 1./(E-w1-w2-w3)\n')
 
     def _get_entry_and_slices(self, E, L, nP):
-        masses = self.qcis.fcs.sc_list_sorted[
-            self.qcis.fcs.slices_by_three_masses[0][0]].masses_indexed
-        m1 = masses[0]
         if nP@nP == 0:
             if self.qcis.verbosity >= 2:
                 print('nP = [0 0 0] indexing')
@@ -1253,7 +1277,7 @@ class G(Interpolable):
         else:
             if self.qcis.verbosity >= 2:
                 print('nP != [0 0 0] indexing')
-            mspec = m1
+            mspec, m2, m3 = self._extract_masses()
             ibest = self.qcis._get_ibest(E, L)
             ibest = 0
             warnings.warn(f"\n{bcolors.WARNING}"
@@ -1268,7 +1292,9 @@ class G(Interpolable):
             omk_arr = np.sqrt(mspec**2+kvecSQ_arr)
             Pvec = TWOPI*nP/L
             PmkSQ_arr = ((Pvec-kvec_arr)**2).sum(axis=1)
-            mask = (E-omk_arr)**2-PmkSQ_arr > 0.0
+            threshold = m2+m3
+            zero_support_point = self._get_zero_support_point(threshold)
+            mask = (E-omk_arr)**2-PmkSQ_arr > zero_support_point
             if self.qcis.verbosity >= 2:
                 print('mask =')
                 print(mask)
@@ -1286,9 +1312,7 @@ class G(Interpolable):
 
     def _get_value_from_tbks(self, E, L, project, irrep, cindex_col,
                              cindex_row, tbks_entry, slices):
-        masses = self.qcis.fcs.sc_list_sorted[
-            self.qcis.fcs.slices_by_three_masses[0][0]].masses_indexed
-        [m1, m2, m3] = masses
+        m1, m2, m3 = self._extract_masses()
         g_final = []
         if self.qcis.verbosity >= 2:
             print('iterating over spectator channels, slices')
@@ -1344,13 +1368,13 @@ class G(Interpolable):
                   project=False, irrep=None):
         """Build the G matrix on a single shell."""
         three_scheme = self.qcis.tbis.three_scheme
-        nP = self.qcis.nP
+        nP = self.qcis.fvs.nP
         qc_impl = self.qcis.fvs.qc_impl
         alpha = self.alpha
         beta = self.beta
 
         mask_row_shells, mask_col_shells, row_shell, col_shell\
-            = self._get_masks_and_shells(E, nP, L, tbks_entry,
+            = self._get_masks_and_shells(E, L, tbks_entry,
                                          cindex_row, cindex_col,
                                          row_shell_index, col_shell_index)
         if project:
@@ -1404,21 +1428,21 @@ class G(Interpolable):
         warnings.warn(f"\n{bcolors.WARNING}"
                       "ibest is set to 0. This is a temporary fix."
                       f"{bcolors.ENDC}")
-        proj_tmp_right = np.array(self.qcis.sc_proj_dicts_by_shell[
+        proj_tmp_right = np.array(self.qcis.proj_dicts_by_sc_and_shellset[
             sc_index_col][ibest])[mask_col_shells][
                 col_shell_index][irrep]
         proj_tmp_left = np.conjugate((
             np.array(self.qcis.
-                     sc_proj_dicts_by_shell[sc_index_row][ibest]
+                     proj_dicts_by_sc_and_shellset[sc_index_row][ibest]
                      )[mask_row_shells][row_shell_index][irrep]).T)
         return proj_tmp_right, proj_tmp_left
 
     def _nPzero_projectors(self, sc_index_row, sc_index_col,
                            row_shell_index, col_shell_index, irrep):
-        proj_tmp_right = self.qcis.sc_proj_dicts_by_shell[
+        proj_tmp_right = self.qcis.proj_dicts_by_sc_and_shellset[
                         sc_index_col][0][col_shell_index][irrep]
         proj_tmp_left = np.conjugate((
-                        self.qcis.sc_proj_dicts_by_shell[
+                        self.qcis.proj_dicts_by_sc_and_shellset[
                             sc_index_row][0][row_shell_index][irrep]
                         ).T)
         return proj_tmp_right, proj_tmp_left
@@ -1442,7 +1466,7 @@ class G(Interpolable):
         return g_collection
 
 
-class F:
+class F(Interpolable):
     """
     Class for the finite-volume F matrix.
 
@@ -1460,19 +1484,19 @@ class F:
 
     def __init__(self, qcis=None, alphaKSS=1.0, C1cut=3):
         self.qcis = qcis
-        ts = self.qcis.tbis.three_scheme
-        if (ts == 'original pole')\
-           or (ts == 'relativistic pole'):
+        three_scheme = self.qcis.tbis.three_scheme
+        alpha_beta_scheme = (three_scheme == 'original pole')\
+            or (three_scheme == 'relativistic pole')
+        if alpha_beta_scheme:
             [self.alpha, self.beta] = self.qcis.tbis.scheme_data
         self.C1cut = C1cut
         self.alphaKSS = alphaKSS
 
-    def _get_masks_and_shells(self, E, nP, L, tbks_entry,
-                              cindex, slice_index):
+    def _get_masks_and_shells(self, E, L, tbks_entry, cindex, slice_index):
+        nP = self.qcis.fvs.nP
         mask_slices = None
-        three_slice_index\
-            = self.qcis._get_three_slice_index(cindex)
-
+        # three_slice_index\
+        #     = self.qcis._get_three_slice_index(cindex)
         if nP@nP == 0:
             slice_entry = tbks_entry.shells[slice_index]
         else:
@@ -1480,17 +1504,15 @@ class F:
             if 'reduce_size' in self.qcis.fvs.qc_impl:
                 reduce_size = self.qcis.fvs.qc_impl['reduce_size']
             if reduce_size:
-                masses = self.qcis.fcs.sc_list_sorted[
-                    self.qcis.fcs.
-                    slices_by_three_masses[three_slice_index][0]]\
-                    .masses_indexed
-                mspec = masses[0]
+                mspec, m2, m3 = self._extract_masses()
                 kvecSQ_arr = FOURPI2*tbks_entry.nvecSQ_arr/L**2
                 kvec_arr = TWOPI*tbks_entry.nvec_arr/L
                 omk_arr = np.sqrt(mspec**2+kvecSQ_arr)
                 Pvec = TWOPI*nP/L
                 PmkSQ_arr = ((Pvec-kvec_arr)**2).sum(axis=1)
-                mask = (E-omk_arr)**2-PmkSQ_arr > 0.0
+                threshold = m2+m3
+                zero_support_point = self._get_zero_support_point(threshold)
+                mask = (E-omk_arr)**2-PmkSQ_arr > zero_support_point
                 slices = tbks_entry.shells
                 mask_slices = []
                 for slice_entry in slices:
@@ -1508,8 +1530,8 @@ class F:
                   slice_index=None, project=False, irrep=None,
                   mask=None):
         """Build the F matrix on a single shell."""
-        ts = self.qcis.tbis.three_scheme
-        nP = self.qcis.nP
+        three_scheme = self.qcis.tbis.three_scheme
+        nP = self.qcis.fvs.nP
         qc_impl = self.qcis.fvs.qc_impl
         alpha = self.alpha
         beta = self.beta
@@ -1517,39 +1539,33 @@ class F:
         alphaKSS = self.alphaKSS
 
         mask_slices, slice_entry\
-            = self._get_masks_and_shells(E, nP, L, tbks_entry,
-                                         cindex, slice_index)
-
-        Fshell = QCFunctions.getF_array(E, nP, L, m1, m2, m3,
-                                        tbks_entry,
-                                        slice_entry,
-                                        ell1, ell2,
-                                        alpha, beta,
-                                        C1cut, alphaKSS,
-                                        qc_impl, ts)
+            = self._get_masks_and_shells(E, L, tbks_entry, cindex, slice_index)
+        Fshell = QCFunctions.getF_array(
+            E, nP, L, m1, m2, m3, tbks_entry, slice_entry, ell1, ell2,
+            alpha, beta, C1cut, alphaKSS, qc_impl, three_scheme)
         if project:
             try:
                 if nP@nP != 0:
-                    ibest = self.qcis._get_ibest(E, L)
+                    # ibest = self.qcis._get_ibest(E, L)
                     ibest = 0
                     warnings.warn(f"\n{bcolors.WARNING}"
                                   "ibest is set to 0. This is a temporary fix."
                                   f"{bcolors.ENDC}")
-                    proj_tmp_right = np.array(self.qcis.sc_proj_dicts_by_shell[
-                        sc_ind][ibest])[mask_slices][slice_index][irrep]
+                    proj_tmp_right = np.array(
+                        self.qcis.proj_dicts_by_sc_and_shellset[
+                            sc_ind][ibest])[mask_slices][slice_index][irrep]
                     proj_tmp_left = np.conjugate(((proj_tmp_right)).T)
                 else:
-                    proj_tmp_right = self.qcis.sc_proj_dicts_by_shell[
+                    proj_tmp_right = self.qcis.proj_dicts_by_sc_and_shellset[
                         sc_ind][0][slice_index][irrep]
                     proj_tmp_left = np.conjugate((proj_tmp_right).T)
             except KeyError:
                 return np.array([])
         if project:
             Fshell = proj_tmp_left@Fshell@proj_tmp_right
-
         return Fshell
 
-    def get_value(self, E=5.0, L=5.0, project=False, irrep=None):
+    def _get_value_not_interpolated(self, E, L, project, irrep):
         """Build the F matrix in a shell-based way."""
         Lmax = self.qcis.Lmax
         Emax = self.qcis.Emax
@@ -1557,19 +1573,16 @@ class F:
             raise ValueError("get_value called with E > Emax")
         if L > Lmax:
             raise ValueError("get_value called with L > Lmax")
-        nP = self.qcis.nP
+        nP = self.qcis.fvs.nP
         if self.qcis.verbosity >= 2:
             print('evaluating F')
             print('E = ', E, ', nP = ', nP, ', L = ', L)
 
         if self.qcis.fcs.n_three_slices != 1:
             raise ValueError("only n_three_slices = 1 is supported")
-        three_slice_index = 0
-        cindex = 0
-        masses = self.qcis.fcs.sc_list_sorted[
-            self.qcis.fcs.slices_by_three_masses[0][0]].masses_indexed
-        [m1, m2, m3] = masses
 
+        cindex = 0
+        m1, m2, m3 = self._extract_masses()
         if nP@nP == 0:
             tbks_sub_indices = self.qcis.get_tbks_sub_indices(E=E, L=L)
             if len(self.qcis.tbks_list) > 1:
@@ -1580,7 +1593,7 @@ class F:
             slices = tbks_entry.shells
             mask = None
         else:
-            ibest = self.qcis._get_ibest(E, L)
+            # ibest = self.qcis._get_ibest(E, L)
             ibest = 0
             warnings.warn(f"\n{bcolors.WARNING}"
                           "ibest is set to 0. This is a temporary fix."
@@ -1593,13 +1606,16 @@ class F:
                 if len(self.qcis.tbks_list) > 1:
                     raise ValueError("get_value within F assumes tbks_list is "
                                      "length one.")
+                three_slice_index = 0
                 tbks_entry = self.qcis.tbks_list[three_slice_index][ibest]
                 kvecSQ_arr = FOURPI2*tbks_entry.nvecSQ_arr/L**2
                 kvec_arr = TWOPI*tbks_entry.nvec_arr/L
                 omk_arr = np.sqrt(mspec**2+kvecSQ_arr)
                 Pvec = TWOPI*nP/L
                 PmkSQ_arr = ((Pvec-kvec_arr)**2).sum(axis=1)
-                mask = (E-omk_arr)**2-PmkSQ_arr > 0.0
+                threshold = m2+m3
+                zero_support_point = self._get_zero_support_point(threshold)
+                mask = (E-omk_arr)**2-PmkSQ_arr > zero_support_point
                 if self.qcis.verbosity >= 2:
                     print('mask =')
                     print(mask)
@@ -1632,8 +1648,7 @@ class F:
             for slice_index in range(len(slices)):
                 if self.qcis.verbosity >= 2:
                     print('get_shell is receiving:')
-                    print(E, L,
-                          m1, m2, m3)
+                    print(E, L, m1, m2, m3)
                     print(f'cindex = {cindex}\n'
                           f'sc_ind = {sc_ind}\n'
                           f'ell1 = {ell1}\n'
@@ -1641,15 +1656,10 @@ class F:
                     print(tbks_entry)
                     print('slice_index = '+str(slice_index))
                     print(project, irrep)
-                f_tmp = self.get_shell(E, L,
-                                       m1, m2, m3,
-                                       cindex,  # only for non-zero nP
-                                       sc_ind,
-                                       ell1, ell2,
-                                       tbks_entry,
-                                       slice_index,
-                                       project, irrep,
-                                       mask)
+                f_tmp = self.get_shell(
+                    E, L, m1, m2, m3, cindex,  # only for non-zero nP
+                    sc_ind, ell1, ell2, tbks_entry, slice_index,
+                    project, irrep, mask)
                 if len(f_tmp) != 0:
                     f_final_list = f_final_list+[f_tmp]
         return block_diag(*f_final_list)

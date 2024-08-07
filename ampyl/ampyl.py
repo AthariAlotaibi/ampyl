@@ -74,30 +74,36 @@ class K:
 
     def __init__(self, qcis=None):
         self.qcis = qcis
-        ts = self.qcis.tbis.three_scheme
-        if (ts == 'original pole')\
-           or (ts == 'relativistic pole'):
+        three_scheme = self.qcis.tbis.three_scheme
+        alpha_beta_scheme = (three_scheme == 'original pole')\
+            or (three_scheme == 'relativistic pole')
+        if alpha_beta_scheme:
             [self.alpha, self.beta] = self.qcis.tbis.scheme_data
 
-    def _get_masks_and_shells(self, E, nP, L, tbks_entry,
-                              cindex, slice_index):
+    def _get_masks_and_shells(self, E, L, tbks_entry, cindex, slice_index):
+        nP = self.qcis.fvs.nP
         mask_slices = None
-        three_slice_index\
-            = self.qcis._get_three_slice_index(cindex)
-
+        three_slice_index = self.qcis.sc_to_three_slice[cindex]
         if nP@nP == 0:
             slice_entry = tbks_entry.shells[slice_index]
         else:
-            masses = self.qcis.fcs.sc_list_sorted[
-                self.qcis.fcs.slices_by_three_masses[three_slice_index][0]]\
-                    .masses_indexed
-            mspec = masses[0]
+            sc_list_sorted = self.qcis.fcs.sc_list_sorted
+            slices_by_three_masses = self.qcis.fcs.slices_by_three_masses
+            inslice_index = 0
+            sc_index = slices_by_three_masses[three_slice_index][inslice_index]
+            masses = sc_list_sorted[sc_index].masses_indexed
+            spec_index = 0
+            mspec = masses[spec_index]
             kvecSQ_arr = FOURPI2*tbks_entry.nvecSQ_arr/L**2
             kvec_arr = TWOPI*tbks_entry.nvec_arr/L
             omk_arr = np.sqrt(mspec**2+kvecSQ_arr)
             Pvec = TWOPI*nP/L
             PmkSQ_arr = ((Pvec-kvec_arr)**2).sum(axis=1)
-            mask = (E-omk_arr)**2-PmkSQ_arr > 0.0
+            scatterer_a_index = 1
+            scatterer_b_index = 2
+            threshold = masses[scatterer_a_index] + masses[scatterer_b_index]
+            zero_support_point = self._get_zero_support_point(self, threshold)
+            mask = (E-omk_arr)**2-PmkSQ_arr > zero_support_point
             slices = tbks_entry.shells
             mask_slices = []
             for slice_entry in slices:
@@ -110,48 +116,48 @@ class K:
     def get_shell(self, E=5.0, L=5.0, m1=1.0, m2=1.0, m3=1.0,
                   cindex=None, sc_ind=None, ell=0,
                   pcotdelta_function=None, pcotdelta_parameter_list=None,
-                  tbks_entry=None,
-                  slice_index=None, project=False, irrep=None):
+                  tbks_entry=None, slice_index=None,
+                  project=False, irrep=None):
         """Build the K matrix on a single shell."""
-        ts = self.qcis.tbis.three_scheme
-        nP = self.qcis.nP
+        nP = self.qcis.fvs.nP
+        three_scheme = self.qcis.tbis.three_scheme
         qc_impl = self.qcis.fvs.qc_impl
         alpha = self.alpha
         beta = self.beta
 
         mask_slices, slice_entry\
-            = self._get_masks_and_shells(E, nP, L, tbks_entry,
-                                         cindex, slice_index)
-
-        Kshell = QCFunctions.getK_array(E, nP, L, m1, m2, m3,
-                                        tbks_entry,
-                                        slice_entry,
-                                        ell,
-                                        pcotdelta_function,
-                                        pcotdelta_parameter_list,
-                                        alpha, beta,
-                                        qc_impl, ts)
-
+            = self._get_masks_and_shells(E, L, tbks_entry, cindex, slice_index)
+        Kshell = QCFunctions.getK_array(
+            E, nP, L, m1, m2, m3, tbks_entry, slice_entry, ell,
+            pcotdelta_function, pcotdelta_parameter_list, alpha, beta,
+            qc_impl, three_scheme)
         if project:
             try:
                 if nP@nP != 0:
-                    ibest = self.qcis._get_ibest(E, L)
-                    ibest = 0
+                    ibest_always_zero = QC_IMPL_DEFAULTS['ibest_always_zero']
+                    if 'ibest_always_zero' in self.qcis.fvs.qc_impl:
+                        ibest_always_zero =\
+                            self.qcis.fvs.qc_impl['ibest_always_zero']
+                    if ibest_always_zero:
+                        ibest = 0
+                    else:
+                        ibest = self.qcis._get_ibest(E, L)
+                    proj_tmp_right = np.array(
+                        self.qcis.proj_dicts_by_sc_and_shellset[
+                            sc_ind][ibest])[mask_slices][slice_index][irrep]
+                    proj_tmp_left = np.conjugate(((proj_tmp_right)).T)
+                else:
                     warnings.warn(f"\n{bcolors.WARNING}"
                                   "ibest is set to 0. This is a temporary fix."
                                   f"{bcolors.ENDC}")
-                    proj_tmp_right = np.array(self.qcis.sc_proj_dicts_by_shell[
-                        sc_ind][ibest])[mask_slices][slice_index][irrep]
-                    proj_tmp_left = np.conjugate(((proj_tmp_right)).T)
-                else:
-                    proj_tmp_right = self.qcis.sc_proj_dicts_by_shell[
-                        sc_ind][0][slice_index][irrep]
+                    ibest = 0
+                    proj_tmp_right = self.qcis.proj_dicts_by_sc_and_shellset[
+                        sc_ind][ibest][slice_index][irrep]
                     proj_tmp_left = np.conjugate((proj_tmp_right).T)
             except KeyError:
                 return np.array([])
         if project:
             Kshell = proj_tmp_left@Kshell@proj_tmp_right
-
         return Kshell
 
     def get_value(self, E=5.0, L=5.0, pcotdelta_parameter_lists=None,
@@ -159,36 +165,33 @@ class K:
         """Build the K matrix in a shell-based way."""
         Lmax = self.qcis.Lmax
         Emax = self.qcis.Emax
-        # n_two_channels = self.qcis.n_two_channels
         if E > Emax:
             raise ValueError("get_value called with E > Emax")
         if L > Lmax:
             raise ValueError("get_value called with L > Lmax")
-        nP = self.qcis.nP
+        nP = self.qcis.fvs.nP
         if self.qcis.verbosity >= 2:
             print('evaluating F')
             print('E = ', E, ', nP = ', nP, ', L = ', L)
-
         if self.qcis.fcs.n_three_slices != 1:
             raise ValueError("only n_three_slices = 1 is supported")
-        three_slice_index = 0
         cindex = 0
-        masses = self.qcis.fcs.sc_list_sorted[
-            self.qcis.fcs.slices_by_three_masses[three_slice_index][0]]\
-            .masses_indexed
-        [m1, m2, m3] = masses
-
+        sc_list_sorted = self.qcis.fcs.sc_list_sorted
+        slices_by_three_masses = self.qcis.fcs.slices_by_three_masses
+        three_slice_index = 0
+        inslice_index = 0
+        sc_index = slices_by_three_masses[three_slice_index][inslice_index]
+        masses = sc_list_sorted[sc_index].masses_indexed
+        [mspec, m2, m3] = masses
         if nP@nP == 0:
             tbks_sub_indices = self.qcis.get_tbks_sub_indices(E=E, L=L)
             if len(self.qcis.tbks_list) > 1:
                 raise ValueError("get_value within K assumes tbks_list is "
                                  + "length one.")
-            tbks_entry = self.qcis.tbks_list[0][
-                tbks_sub_indices[0]]
+            tbks_entry = self.qcis.tbks_list[0][tbks_sub_indices[0]]
             slices = tbks_entry.shells
         else:
-            mspec = m1
-            ibest = self.qcis._get_ibest(E, L)
+            # ibest = self.qcis._get_ibest(E, L)
             ibest = 0
             warnings.warn(f"\n{bcolors.WARNING}"
                           "ibest is set to 0. This is a temporary fix."
@@ -202,7 +205,9 @@ class K:
             omk_arr = np.sqrt(mspec**2+kvecSQ_arr)
             Pvec = TWOPI*nP/L
             PmkSQ_arr = ((Pvec-kvec_arr)**2).sum(axis=1)
-            mask = (E-omk_arr)**2-PmkSQ_arr > 0.0
+            threshold = m2+m3
+            zero_support_point = self._get_zero_support_point(self, threshold)
+            mask = (E-omk_arr)**2-PmkSQ_arr > zero_support_point
             if self.qcis.verbosity >= 2:
                 print('mask =')
                 print(mask)
@@ -225,16 +230,18 @@ class K:
             pcotdelta_function = self.qcis.fcs.sc_list[
                 sc_ind].p_cot_deltas[0]
             for slice_index in range(len(slices)):
-                k_tmp = self.get_shell(E, L, m1, m2, m3,
-                                       cindex,  # only for non-zero P
-                                       sc_ind, ell,
-                                       pcotdelta_function,
-                                       pcotdelta_parameter_list,
-                                       tbks_entry,
-                                       slice_index, project, irrep)
+                k_tmp = self.get_shell(
+                    E, L, mspec, m2, m3, cindex, sc_ind, ell,
+                    pcotdelta_function, pcotdelta_parameter_list, tbks_entry,
+                    slice_index, project, irrep)
                 if len(k_tmp) != 0:
                     k_final_list = k_final_list+[k_tmp]
         return block_diag(*k_final_list)
+
+    def _get_zero_support_point(self, threshold):
+        alpha = self.alpha
+        beta = self.beta
+        return (1.0+alpha)*threshold**2/4.0-beta*((3.0-alpha)*threshold**2/4.0)
 
 
 class QC:
@@ -297,16 +304,19 @@ class QC:
 
         if version == 'f3':
             [pcotdelta_parameter_lists, k3_params] = k_params
-            F = self.f.get_value(E, L, project, irrep)/rescale
-            G = self.g.get_value(E, L, project, irrep)/rescale
+            F = self.f.get_value(E, L, project, irrep,
+                                 short_string='f')/rescale
+            G = self.g.get_value(E, L, project, irrep,
+                                 short_string='g')/rescale
             K = self.k.get_value(E, L, pcotdelta_parameter_lists,
                                  project, irrep)*rescale
-            return (F/3 - F @ np.linalg.inv(np.linalg.inv(K)+F+G) @ F)
+            return (F/3 - F @ np.linalg.inv(np.linalg.inv(K)+F+G) @ F)/L**3
 
         if (len(version) >= 8) and (version[:8] == 'kdf_zero'):
             [pcotdelta_parameter_lists, k3_params] = k_params
             if version == 'kdf_zero_1+_fgcombo':
-                FplusG = self.fplusg.get_value(E, L, project, irrep)/rescale
+                FplusG = self.fplusg.get_value(E, L, project, irrep,
+                                               short_string='fplusg')/rescale
                 K = self.k.get_value(E, L, pcotdelta_parameter_lists,
                                      project, irrep)*rescale
                 if len(FplusG) > len(K):
@@ -316,28 +326,30 @@ class QC:
                                   "Padding K with extra entries. "
                                   "This is a temporary fix."
                                   f"{bcolors.ENDC}")
-                    K_tmp = np.zeros_like(FplusG)
-                    K_tmp[:len(K), :len(K)] = K
-                    K = K_tmp
+                    padded_K = np.zeros_like(FplusG)
+                    padded_K[:len(K), :len(K)] = K
+                    K = padded_K
                 elif len(FplusG) < len(K):
-                    FplusG = np.zeros(K.shape)
                     warnings.warn(f"\n{bcolors.WARNING}"
                                   "FplusG and K have different shapes, and "
                                   "FplusG is smaller. "
                                   "Setting FplusG to zero. "
                                   "This is a temporary fix."
                                   f"{bcolors.ENDC}")
-                ident_tmp = np.identity(len(FplusG))
-                return np.linalg.det(ident_tmp+(FplusG)@K)-shift
+                    FplusG = np.zeros(K.shape)
+                id_mat = np.identity(len(FplusG))
+                return np.linalg.det(id_mat+(FplusG)@K)-shift
 
-            F = self.f.get_value(E, L, project, irrep)/rescale
-            G = self.g.get_value(E, L, project, irrep)/rescale
+            F = self.f.get_value(E, L, project, irrep,
+                                 short_string='f')/rescale
+            G = self.g.get_value(E, L, project, irrep,
+                                 short_string='g')/rescale
             K = self.k.get_value(E, L, pcotdelta_parameter_lists,
                                  project, irrep)*rescale
 
             if version == 'kdf_zero_1+':
-                ident_tmp = np.identity(len(G))
-                return np.linalg.det(ident_tmp+(F+G)@K)
+                id_mat = np.identity(len(G))
+                return np.linalg.det(id_mat+(F+G)@K)
 
             if version == 'kdf_zero_k2_inv':
                 return np.linalg.det(np.linalg.inv(K)+(F+G))
@@ -346,9 +358,9 @@ class QC:
                 return np.linalg.det(np.linalg.inv(F+G)+K)
 
             if version == 'kdf_zero_1+_FinverseF3':
-                ident_tmp = np.identity(len(G))
+                id_mat = np.identity(len(G))
                 block_inv = np.linalg.inv(np.linalg.inv(K)+F+G)
-                matrix_in_det = ident_tmp-3.*block_inv@F
+                matrix_in_det = id_mat-3.*block_inv@F
                 inverse_det = 1./np.linalg.det(matrix_in_det)
                 return inverse_det
 
@@ -372,7 +384,11 @@ class QC:
                  f'version = {version}\n'
                  f'rescale = {rescale}\n'
                  f'g_smart_interpolate = '
-                 f'{self.qcis.fvs.qc_impl["g_smart_interpolate"]}\n\n')
+                 f'{self.qcis.fvs.qc_impl["g_smart_interpolate"]}\n'
+                 f'f_smart_interpolate = '
+                 f'{self.qcis.fvs.qc_impl["f_smart_interpolate"]}\n'
+                 f'fplusg_smart_interpolate = '
+                 f'{self.qcis.fvs.qc_impl["fplusg_smart_interpolate"]}\n\n')
 
         wf.write('A solution was found at\n'
                  f'E = {root}\n\n')
@@ -390,14 +406,16 @@ class QC:
                                       version=version, rescale=rescale)
             wf.write(f'qc(E = {scaler:.2f}sol) = {qc_value}\n')
 
-        G = self.g.get_value(E=root, L=L, project=project, irrep=irrep)
+        G = self.g.get_value(E=root, L=L, project=project, irrep=irrep,
+                             short_string='g')
         wf.write(f'\nShape of projected G-matrix at the solution: {G.shape}\n')
         eigenvalues = np.sort(np.linalg.eigvals(G))
         wf.write(f'Eigenvalues of projected G-matrix at the solution:\n'
                  f'{eigenvalues}\n\n')
         wf.write(f'Value of projected G-matrix at the solution:\n{G}\n\n')
 
-        F = self.f.get_value(E=root, L=L, project=project, irrep=irrep)
+        F = self.f.get_value(E=root, L=L, project=project, irrep=irrep,
+                             short_string='f')
         wf.write(f'Shape of projected F-matrix at the solution: {F.shape}\n')
         eigenvalues = np.sort(np.linalg.eigvals(F))
         wf.write(f'Eigenvalues of projected F-matrix at the solution:\n'
@@ -423,14 +441,14 @@ class QC:
         wf.write('Value of the projected I+(F+G)K at the solution:\n'
                  f'{qc_matrix}\n\n')
 
-        G = self.g.get_value(E=root, L=L)
+        G = self.g.get_value(E=root, L=L, short_string='g')
         wf.write(f'Shape of unprojected G-matrix at the solution: {G.shape}\n')
         eigenvalues = np.sort(np.linalg.eigvals(G))
         wf.write(f'Eigenvalues of unprojected G-matrix at the solution:\n'
                  f'{eigenvalues}\n\n')
         wf.write(f'Value of unprojected G-matrix at the solution:\n{G}\n\n')
 
-        F = self.f.get_value(E=root, L=L)
+        F = self.f.get_value(E=root, L=L, short_string='f')
         wf.write(f'Shape of unprojected F-matrix at the solution: {F.shape}\n')
         eigenvalues = np.sort(np.linalg.eigvals(F))
         wf.write(f'Eigenvalues of unprojected F-matrix at the solution:\n'
@@ -474,7 +492,7 @@ class QC:
                                                         rescale)
         roots = np.array(roots)
         roots_unique = np.array([])
-        cutoff_for_unique = 1.e-3
+        cutoff_for_unique = EPSILON3
         for root in roots:
             if len(roots_unique) == 0:
                 qc_value = self.get_value(E=root, L=L, k_params=k_params,

@@ -43,8 +43,8 @@ from .constants import FOURPI2
 from .constants import EPSILON4
 from .constants import EPSILON10
 from .constants import EPSILON20
-from .constants import DELTA_L_FOR_GRID
-from .constants import DELTA_E_FOR_GRID
+from .constants import DELTA_L_NPNZ_GRID
+from .constants import DELTA_E_NPNZ_GRID
 from .constants import L_GRID_SHIFT
 from .constants import E_GRID_SHIFT
 from .constants import ISO_PROJECTORS
@@ -84,8 +84,9 @@ class FiniteVolumeSetup:
     """
 
     def __init__(self, formalism='RFT', nP=np.array([0, 0, 0]), qc_impl={},
-                 verbosity=0):
+                 spin_half=False, verbosity=0):
         self.formalism = formalism
+        self.spin_half = spin_half
         self.qc_impl = qc_impl
         self.nP = nP
         self.set_irreps()
@@ -158,37 +159,82 @@ class FiniteVolumeSetup:
 
     def set_irreps(self):
         """Set the irreps relevant for the finite-volume setup."""
-        if (self._nP == np.array([0, 0, 0])).all():
-            self.A1PLUS = 'A1PLUS'
-            self.A2PLUS = 'A2PLUS'
-            self.T1PLUS = 'T1PLUS'
-            self.T2PLUS = 'T2PLUS'
-            self.EPLUS = 'EPLUS'
-            self.A1MINUS = 'A1MINUS'
-            self.A2MINUS = 'A2MINUS'
-            self.T1MINUS = 'T1MINUS'
-            self.T2MINUS = 'T2MINUS'
-            self.EMINUS = 'EMINUS'
-            self.irrep_set = [self.A1PLUS, self.A2PLUS, self.EPLUS,
-                              self.T1PLUS, self.T2PLUS, self.A1MINUS,
-                              self.A2MINUS, self.EMINUS, self.T1MINUS,
-                              self.T2MINUS]
-        elif (self._nP == np.array([0, 0, 1])).all():
-            self.A1 = 'A1'
-            self.A2 = 'A2'
-            self.B1 = 'B1'
-            self.B2 = 'B2'
-            self.E = 'E2'
-            self.irrep_set = [self.A1, self.A2, self.B1, self.B2, self.E]
-        elif (self._nP == np.array([0, 1, 1])).all():
-            self.A1 = 'A1'
-            self.A2 = 'A2'
-            self.B1 = 'B1'
-            self.B2 = 'B2'
-            self.irrep_set = [self.A1, self.A2, self.B1, self.B2]
+        nP_is_zero = (self._nP == np.array([0, 0, 0])).all()
+        nP_is_00z = self._nP[0] == 0 and self._nP[1] == 0
+        nP_is_0zz = self._nP[0] == 0 and self._nP[1] == self._nP[2]
+        if not self.spin_half:
+            if nP_is_zero:
+                self._set_irreps_nPero_intspin()
+            elif nP_is_00z:
+                self._set_irreps_nP00z_intspin()
+            elif nP_is_0zz:
+                self._set_irreps_nP0zz_intspin()
+            else:
+                self.irrep_set = []
+                raise ValueError("unsupported value of nP in irreps: "
+                                 + str(self._nP))
         else:
-            raise ValueError("unsupported value of nP in irreps: "
-                             + str(self._nP))
+            if nP_is_zero:
+                self._set_irreps_nPzero_spinhalf()
+            else:
+                self.irrep_set = []
+                raise ValueError("unsupported value of nP in irreps: "
+                                 + str(self._nP))
+
+    def _set_irreps_nPero_intspin(self):
+        self.A1PLUS = 'A1PLUS'
+        self.A2PLUS = 'A2PLUS'
+        self.T1PLUS = 'T1PLUS'
+        self.T2PLUS = 'T2PLUS'
+        self.EPLUS = 'EPLUS'
+        self.A1MINUS = 'A1MINUS'
+        self.A2MINUS = 'A2MINUS'
+        self.T1MINUS = 'T1MINUS'
+        self.T2MINUS = 'T2MINUS'
+        self.EMINUS = 'EMINUS'
+        self.irrep_set = [self.A1PLUS, self.A2PLUS, self.EPLUS,
+                          self.T1PLUS, self.T2PLUS, self.A1MINUS,
+                          self.A2MINUS, self.EMINUS, self.T1MINUS,
+                          self.T2MINUS]
+
+    def _set_irreps_nP00z_intspin(self):
+        self.A1 = 'A1'
+        self.A2 = 'A2'
+        self.B1 = 'B1'
+        self.B2 = 'B2'
+        self.E = 'E2'
+        self.irrep_set = [self.A1, self.A2, self.B1, self.B2, self.E]
+
+    def _set_irreps_nP0zz_intspin(self):
+        self.A1 = 'A1'
+        self.A2 = 'A2'
+        self.B1 = 'B1'
+        self.B2 = 'B2'
+        self.irrep_set = [self.A1, self.A2, self.B1, self.B2]
+
+    def _set_irreps_nPzero_spinhalf(self):
+        self.A1PLUS = 'A1PLUS'
+        self.A2PLUS = 'A2PLUS'
+        self.EPLUS = 'EPLUS'
+        self.T1PLUS = 'T1PLUS'
+        self.T2PLUS = 'T2PLUS'
+        self.G1PLUS = 'G1PLUS'
+        self.G2PLUS = 'G2PLUS'
+        self.HPLUS = 'HPLUS'
+        self.A1MINUS = 'A1MINUS'
+        self.A2MINUS = 'A2MINUS'
+        self.EMINUS = 'EMINUS'
+        self.T1MINUS = 'T1MINUS'
+        self.T2MINUS = 'T2MINUS'
+        self.G1MINUS = 'G1MINUS'
+        self.G2MINUS = 'G2MINUS'
+        self.HMINUS = 'HMINUS'
+        self.irrep_set = [self.A1PLUS, self.A2PLUS, self.EPLUS,
+                          self.T1PLUS, self.T2PLUS, self.G1PLUS,
+                          self.G2PLUS, self.HPLUS, self.A1MINUS,
+                          self.A2MINUS, self.EMINUS, self.T1MINUS,
+                          self.T2MINUS, self.G1MINUS, self.G2MINUS,
+                          self.HMINUS]
 
     def __str__(self):
         """Return a string representation of the FiniteVolumeSetup object."""
@@ -208,6 +254,14 @@ class ThreeBodyInteractionScheme:
     :type fcs: :class:`FlavorChannelSpace` object
     :param Emin: minimum energy extent of the subthreshold region
     :type Emin: float
+    :param flavor_ellm_dim: dimension of the flavor-ellm space
+    :type flavor_ellm_dim: int
+    :param use_pv_shift_prescription: whether to use the IPV prescription for
+        removing K-matrix poles
+    :type use_pv_shift_prescription: bool
+    :param pv_shift_parameters: parameters needed to define the IPV
+        prescription
+    :type pv_shift_parameters: list, length equal to flavor_ellm_dim
     :param three_scheme: three-body interaction scheme (Currently only
         ``'relativistic pole'`` is supported.)
     :type three_scheme: str
@@ -223,12 +277,31 @@ class ThreeBodyInteractionScheme:
 
     def __init__(self, fcs=None, Emin=0.0, three_scheme='relativistic pole',
                  scheme_data=[-1.0, 0.0], kdf_functions=None,
+                 use_pv_shift_prescription=False,
+                 pv_shift_parameters=None,
                  verbosity=0):
         self.Emin = Emin
         if fcs is None:
             self.fcs = FlavorChannelSpace(fc_list=[FlavorChannel(3)])
         else:
             self.fcs = fcs
+        if use_pv_shift_prescription:
+            if pv_shift_parameters is None:
+                raise ValueError("pv_shift_parameters must be provided")
+        else:
+            if pv_shift_parameters is not None:
+                pv_shift_parameters = None
+                warnings.warn("pv_shift_parameters provided but "
+                              "use_pv_shift_prescription is False. "
+                              "Setting pv_shift_parameters to None.")
+        self.use_pv_shift_prescription = use_pv_shift_prescription
+        self._set_flavor_ellm_dim()
+        wrong_length = False
+        if use_pv_shift_prescription:
+            wrong_length = len(pv_shift_parameters) != self.flavor_ellm_dim
+        if use_pv_shift_prescription and wrong_length:
+            raise ValueError("pv_shift_parameters must have length equal "
+                             "to flavor_ellm_dim")
         self.three_scheme = three_scheme
         self.scheme_data = scheme_data
         if kdf_functions is None:
@@ -243,6 +316,14 @@ class ThreeBodyInteractionScheme:
             print(f"{bcolors.OKGREEN}")
             print(self)
             print(f"{bcolors.ENDC}")
+
+    def _set_flavor_ellm_dim(self):
+        flavor_ellm_dim = 0
+        for sc in self.fcs.sc_list:
+            for ell in sc.ell_set:
+                dim = 2*ell+1
+                flavor_ellm_dim += dim
+        self.flavor_ellm_dim = flavor_ellm_dim
 
     @property
     def verbosity(self):
@@ -757,16 +838,15 @@ class QCIndexSpace:
     :vartype nvecset_ident_batched: numpy.ndarray
     """
 
-    def __init__(self, fcs=None, fvs=None, tbis=None,
-                 Emax=5.0, Lmax=5.0,
-                 deltaE=DELTA_E_FOR_GRID, deltaL=DELTA_L_FOR_GRID,
+    def __init__(self, fcs=None, fvs=None, tbis=None, Emax=5., Lmax=5.,
+                 deltaE_nPnz=DELTA_E_NPNZ_GRID, deltaL_nPnz=DELTA_L_NPNZ_GRID,
                  verbosity=0):
         self._verbosity = verbosity
         self.verbosity = verbosity
         self.Emax = Emax
         self.Lmax = Lmax
-        self.deltaE = deltaE
-        self.deltaL = deltaL
+        self.deltaE_nPnz = deltaE_nPnz
+        self.deltaL_nPnz = deltaL_nPnz
 
         if fcs is None:
             if verbosity >= 2:
@@ -902,23 +982,25 @@ class QCIndexSpace:
 
     def populate(self):
         """Populate the index space."""
-        ell_max, half_spin = self.get_ell_and_spin()
-        self.group = Groups(ell_max=ell_max, half_spin=half_spin)
-        self.half_spin = half_spin
-        self.Evals, self.Lvals = self.get_Evals_Lvals()
+        ell_max, spin_half = self.get_ell_and_spin()
+        self.group = Groups(ell_max=ell_max, spin_half=spin_half)
+        self.spin_half = spin_half
+        self.Evals, self.Lvals = self.get_grid_nPnonzero()
         self.param_structure = self.get_param_structure()
         self.populate_all_nvec_arr()
         self.ell_sets = self._get_ell_sets()
-        self.populate_all_kellm_spaces()
-        self.populate_all_proj_dicts()
-        self.proj_dict = self.group.get_full_proj_dict(qcis=self)
+        self.sc_to_three_slice = self._get_sc_to_three_slice()
+        if not self.spin_half:
+            self.populate_all_kellm_spaces()
+            self.populate_all_proj_dicts()
+            self.proj_dict = self.group.get_full_proj_dict(qcis=self)
         self.populate_all_nonint_data()
         self.populate_nonint_proj_dict()
         self.populate_nonint_multiplicities()
 
     def get_ell_and_spin(self):
         ell_max = 4
-        half_spin = False
+        spin_half = False
         for sc in self.fcs.sc_list_sorted:
             if np.max(sc.ell_set) > ell_max:
                 ell_max = np.max(sc.ell_set)
@@ -932,24 +1014,24 @@ class QCIndexSpace:
                                   "Spin half detected; certain objects may "
                                   "not be supported"
                                   f"{bcolors.ENDC}", stacklevel=2)
-                    half_spin = True
+                    spin_half = True
                 elif np.abs(spin-spin_int) > EPSILON10:
                     raise ValueError("only integer spin and (partially spin "
                                      "half) currently supported")
             max_spin = int(np.max(nic.spins))
             if max_spin > ell_max:
                 ell_max = max_spin
-        return ell_max, half_spin
+        return ell_max, spin_half
 
-    def get_Evals_Lvals(self):
+    def get_grid_nPnonzero(self):
         if self.nPSQ != 0:
             if self.verbosity >= 2:
                 print(f"{bcolors.OKGREEN}"
                       "nPSQ is nonzero, grid will be used"
                       f"{bcolors.ENDC}")
-            [Evals, Lvals] = self._get_grid_nonzero_nP(self.Emax, self.Lmax,
-                                                       self.deltaE,
-                                                       self.deltaL)
+            [Evals, Lvals] = self._get_grid_nPnonzero(self.Emax, self.Lmax,
+                                                      self.deltaE_nPnz,
+                                                      self.deltaL_nPnz)
             if self.verbosity >= 2:
                 print(f"{bcolors.OKGREEN}"
                       f"Grid for non-zero nP:\n"
@@ -960,7 +1042,7 @@ class QCIndexSpace:
             Lvals = None
         return Evals, Lvals
 
-    def _get_grid_nonzero_nP(self, Emax, Lmax, deltaE, deltaL):
+    def _get_grid_nPnonzero(self, Emax, Lmax, deltaE, deltaL):
         Lmin = np.mod(Lmax-L_GRID_SHIFT, deltaL)+L_GRID_SHIFT
         Emin = np.mod(Emax-E_GRID_SHIFT, deltaE)+E_GRID_SHIFT
         Lvals = np.arange(Lmin, Lmax+EPSILON4, deltaL)
@@ -974,19 +1056,17 @@ class QCIndexSpace:
         return [Evals, Lvals]
 
     def get_param_structure(self):
-        parametrization_structure = []
-        two_param_struc_tmp = []
+        param_structure = []
+        two_param_structure = []
         for sc in self.fcs.sc_list_sorted:
-            tmp_entry = []
+            param_entry = []
             for n_params_tmp in sc.n_params_set:
-                tmp_entry.append([0.0]*n_params_tmp)
-            two_param_struc_tmp.append(tmp_entry)
-        parametrization_structure.append(two_param_struc_tmp)
-        three_param_struc_tmp = []
-        for _ in self.tbis.kdf_functions:
-            three_param_struc_tmp = three_param_struc_tmp+[0.0]
-        parametrization_structure.append(three_param_struc_tmp)
-        return parametrization_structure
+                param_entry.append([0.]*n_params_tmp)
+            two_param_structure.append(param_entry)
+        param_structure.append(two_param_structure)
+        three_param_structure = [0.]*len(self.tbis.kdf_functions)
+        param_structure.append(three_param_structure)
+        return param_structure
 
     def populate_all_nvec_arr(self):
         """Populate all nvec_arr slots."""
@@ -1016,17 +1096,17 @@ class QCIndexSpace:
                           f"{three_slice_index}"
                           f"{bcolors.ENDC}")
                 self._populate_slot_zero_momentum(slot_index, nPspecmax)
-                if self.half_spin:
+                if self.spin_half:
                     self._populate_spin_zero_momentum(slot_index, nPspecmax)
             else:
                 nPspecmax = self._get_nPspecmax(three_slice_index)
                 self._populate_slot_nonzero_momentum(slot_index,
                                                      three_slice_index,
                                                      nPspecmax)
-                if self.half_spin:
+                if self.spin_half:
                     raise ValueError("half spin not yet supported for "
                                      "nonzero nP")
-        elif not three_particle_channel and not self.half_spin:
+        elif not three_particle_channel and not self.spin_half:
             nPspecmax = EPSILON4
             self._populate_slot_zero_momentum(slot_index, nPspecmax)
         else:
@@ -1089,14 +1169,14 @@ class QCIndexSpace:
         self.tbks_list[slot_index] = [tbks_copy]
         Lmax = self.Lmax
         Emax = self.Emax
-        deltaE = self.deltaE
-        deltaL = self.deltaL
+        deltaE = self.deltaE_nPnz
+        deltaL = self.deltaL_nPnz
         masses = self.fcs.sc_list_sorted[
             self.fcs.slices_by_three_masses[three_slice_index][0]]\
             .masses_indexed
         m_spec = masses[0]
-        nP = self.nP
-        [Evals, Lvals] = self._get_grid_nonzero_nP(Emax, Lmax, deltaE, deltaL)
+        nP = self.fvs.nP
+        [Evals, Lvals] = self._get_grid_nPnonzero(Emax, Lmax, deltaE, deltaL)
         for Ltmp in Lvals:
             for Etmp in Evals:
                 self._populate_EL_iteration(slot_index, tbks_tmp, nvec_arr,
@@ -1138,6 +1218,37 @@ class QCIndexSpace:
             ell_sets = ell_sets+[ell_set]
         return ell_sets[1:]
 
+    def _get_sc_to_three_slice(self):
+        """Get the spectator channel to three-slice mapping."""
+        last_loc = -1
+        offset = 1
+        three_channel_max =\
+            self.fcs.slices_by_three_masses[last_loc][last_loc]-offset
+        no_two_channels = self.n_two_channels == 0
+
+        sc_to_three_slice = []
+        for sc_index in range(self.n_channels):
+            sc_too_high = sc_index > three_channel_max
+            if no_two_channels and sc_too_high:
+                raise ValueError(f"using sc_index = {sc_index} with "
+                                 f"three_slices = "
+                                 f"{self.fcs.slices_by_three_masses} "
+                                 f"and (no two-particle channels) "
+                                 f"is not allowed")
+            if sc_index < self.n_two_channels:
+                three_slice_index = 0
+            else:
+                sc_index_shift = sc_index-self.n_two_channels
+                three_slice_index = -1
+                for k in range(len(self.fcs.slices_by_three_masses)):
+                    three_slice = self.fcs.slices_by_three_masses[k]
+                    if three_slice[0] <= sc_index_shift < three_slice[1]:
+                        three_slice_index = k
+                if self.n_two_channels > 0:
+                    three_slice_index = three_slice_index+1
+            sc_to_three_slice.append(three_slice_index)
+        return sc_to_three_slice
+
     def populate_all_kellm_spaces(self):
         """Populate all kellm spaces."""
         if self.verbosity >= 2:
@@ -1145,40 +1256,30 @@ class QCIndexSpace:
                   f"Populating kellm spaces\n"
                   f"{self.n_channels} channels to populate"
                   f"{bcolors.ENDC}")
-        kellm_shells = [[]]
-        kellm_spaces = [[]]
-        for cindex in range(self.n_channels):
-            if cindex < self.n_two_channels:
-                slot_index = 0
-            else:
-                cindex_shift = cindex-self.n_two_channels
-                slot_index = -1
-                for k in range(len(self.fcs.slices_by_three_masses)):
-                    three_slice = self.fcs.slices_by_three_masses[k]
-                    if three_slice[0] <= cindex_shift < three_slice[1]:
-                        slot_index = k
-                if self.n_two_channels > 0:
-                    slot_index = slot_index+1
-            tbks_list_tmp = self.tbks_list[slot_index]
-            ellm_set = self.ellm_sets[cindex]
-            kellm_shells_single = [[]]
-            kellm_spaces_single = [[]]
-            for tbks_tmp in tbks_list_tmp:
-                nvec_arr = tbks_tmp.nvec_arr
-                kellm_shell = (len(ellm_set)*np.array(tbks_tmp.shells
+        kellm_shells = []
+        kellm_spaces = []
+        for sc_index in range(self.n_channels):
+            three_slice_index = self.sc_to_three_slice[sc_index]
+            tbks_fixed_masses_list = self.tbks_list[three_slice_index]
+            ellm_set = self.ellm_sets[sc_index]
+            kellm_shells_entry = []
+            kellm_spaces_entry = []
+            for tbks_entry in tbks_fixed_masses_list:
+                nvec_arr = tbks_entry.nvec_arr
+                kellm_shell = (len(ellm_set)*np.array(tbks_entry.shells
                                                       )).tolist()
-                kellm_shells_single = kellm_shells_single+[kellm_shell]
+                kellm_shells_entry.append(kellm_shell)
                 ellm_set_extended = np.tile(ellm_set, (len(nvec_arr), 1))
                 nvec_arr_extended = np.repeat(nvec_arr, len(ellm_set),
                                               axis=0)
                 kellm_space = np.concatenate((nvec_arr_extended,
                                               ellm_set_extended),
                                              axis=1)
-                kellm_spaces_single = kellm_spaces_single+[kellm_space]
-            kellm_shells = kellm_shells+[kellm_shells_single[1:]]
-            kellm_spaces = kellm_spaces+[kellm_spaces_single[1:]]
-        self.kellm_spaces = kellm_spaces[1:]
-        self.kellm_shells = kellm_shells[1:]
+                kellm_spaces_entry.append(kellm_space)
+            kellm_shells.append(kellm_shells_entry)
+            kellm_spaces.append(kellm_spaces_entry)
+        self.kellm_spaces = kellm_spaces
+        self.kellm_shells = kellm_shells
         if self.verbosity >= 2:
             print(f"{bcolors.OKGREEN}"
                   "Result for kellm spaces:\n"
@@ -1196,36 +1297,34 @@ class QCIndexSpace:
     def populate_all_proj_dicts(self):
         """Populate all projector dictionaries."""
         group = self.group
-        sc_proj_dicts = []
-        sc_proj_dicts_by_shell = [[]]
+        proj_dicts_by_sc = []
+        proj_dicts_by_sc_and_shellset = []
         if self.verbosity >= 2:
             print(f"{bcolors.OKGREEN}\n"
                   f"Getting the dict for following qcis:")
             print(self)
             print(f"{self}{bcolors.ENDC}")
         for sc_index in range(self.n_channels):
-            proj_dict = group.get_channel_proj_dict(qcis=self,
-                                                    sc_index=sc_index)
-            sc_proj_dicts = sc_proj_dicts+[proj_dict]
-            sc_proj_dict_channel_by_shell = [[]]
+            fixed_sc_proj_dict = group.get_fixed_sc_proj_dict(
+                qcis=self, sc_index=sc_index)
+            proj_dicts_by_sc.append(fixed_sc_proj_dict)
+            fixed_sc_proj_dicts_by_shellset = []
             for kellm_shell_index in range(len(self.kellm_shells[sc_index])):
                 kellm_shell_set = self.kellm_shells[sc_index][
                     kellm_shell_index]
-                sc_proj_dict_shell_set = []
+                fixed_sc_and_shellset_proj_dict = []
                 for kellm_shell in kellm_shell_set:
-                    sc_proj_dict_shell_set = sc_proj_dict_shell_set\
-                        + [group.get_shell_proj_dict(
-                            qcis=self,
-                            cindex=sc_index,
+                    fixed_sc_and_shellset_proj_dict.append(
+                        group.get_fixed_sc_and_shell_proj_dict(
+                            qcis=self, sc_index=sc_index,
                             kellm_shell=kellm_shell,
-                            shell_index=kellm_shell_index)]
-                sc_proj_dict_channel_by_shell = sc_proj_dict_channel_by_shell\
-                    + [sc_proj_dict_shell_set]
-            sc_proj_dict_channel_by_shell = sc_proj_dict_channel_by_shell[1:]
-            sc_proj_dicts_by_shell = sc_proj_dicts_by_shell\
-                + [sc_proj_dict_channel_by_shell]
-        self.sc_proj_dicts = sc_proj_dicts
-        self.sc_proj_dicts_by_shell = sc_proj_dicts_by_shell[1:]
+                            kellm_shell_index=kellm_shell_index))
+                fixed_sc_proj_dicts_by_shellset.append(
+                    fixed_sc_and_shellset_proj_dict)
+            proj_dicts_by_sc_and_shellset.append(
+                fixed_sc_proj_dicts_by_shellset)
+        self.proj_dicts_by_sc = proj_dicts_by_sc
+        self.proj_dicts_by_sc_and_shellset = proj_dicts_by_sc_and_shellset
 
     def populate_all_nonint_data(self):
         """Populate all non-interacting data."""
@@ -1272,8 +1371,7 @@ class QCIndexSpace:
                  nvecset_batched, nvecset_ident_batched]\
                     = self._reps_and_batches_three(nvecset_arr, nvecset_SQs,
                                                    nvecset_ident,
-                                                   nvecset_ident_SQs,
-                                                   nP)
+                                                   nvecset_ident_SQs, nP)
             else:
                 [m1, m2, Emax, nP, Lmax, nvec_cutoff, nvecs]\
                     = self._load_ni_data_two(fc)
@@ -1299,27 +1397,21 @@ class QCIndexSpace:
                                                  nvecset_ident,
                                                  nvecset_ident_SQs, nP)
 
-            nvecset_arr_all = nvecset_arr_all+[nvecset_arr]
-            nvecset_SQs_all = nvecset_SQs_all+[nvecset_SQs]
-            nvecset_reps_all = nvecset_reps_all+[nvecset_reps]
-            nvecset_SQreps_all = nvecset_SQreps_all+[nvecset_SQreps]
-            nvecset_inds_all = nvecset_inds_all+[nvecset_inds]
-            nvecset_counts_all = nvecset_counts_all+[nvecset_counts]
-            nvecset_batched_all = nvecset_batched_all+[nvecset_batched]
+            nvecset_arr_all.append(nvecset_arr)
+            nvecset_SQs_all.append(nvecset_SQs)
+            nvecset_reps_all.append(nvecset_reps)
+            nvecset_SQreps_all.append(nvecset_SQreps)
+            nvecset_inds_all.append(nvecset_inds)
+            nvecset_counts_all.append(nvecset_counts)
+            nvecset_batched_all.append(nvecset_batched)
 
-            nvecset_ident_all = nvecset_ident_all\
-                + [nvecset_ident]
-            nvecset_ident_SQs_all = nvecset_ident_SQs_all+[nvecset_ident_SQs]
-            nvecset_ident_reps_all = nvecset_ident_reps_all\
-                + [nvecset_ident_reps]
-            nvecset_ident_SQreps_all = nvecset_ident_SQreps_all\
-                + [nvecset_ident_SQreps]
-            nvecset_ident_inds_all = nvecset_ident_inds_all\
-                + [nvecset_ident_inds]
-            nvecset_ident_counts_all = nvecset_ident_counts_all\
-                + [nvecset_ident_counts]
-            nvecset_ident_batched_all = nvecset_ident_batched_all\
-                + [nvecset_ident_batched]
+            nvecset_ident_all.append(nvecset_ident)
+            nvecset_ident_SQs_all.append(nvecset_ident_SQs)
+            nvecset_ident_reps_all.append(nvecset_ident_reps)
+            nvecset_ident_SQreps_all.append(nvecset_ident_SQreps)
+            nvecset_ident_inds_all.append(nvecset_ident_inds)
+            nvecset_ident_counts_all.append(nvecset_ident_counts)
+            nvecset_ident_batched_all.append(nvecset_ident_batched)
         self.nvecset_arr = nvecset_arr_all
         self.nvecset_SQs = nvecset_SQs_all
         self.nvecset_reps = nvecset_reps_all
@@ -1347,22 +1439,22 @@ class QCIndexSpace:
             if two_particles:
                 isospin_channel = self.fcs.ni_list[nic_index].isospin_channel
                 nonint_proj_dict\
-                    .append(self.group.get_noninttwo_proj_dict(
+                    .append(self.group.get_proj_nonint_two_particles_dict(
                         qcis=self, nic_index=nic_index,
                         isospin_channel=isospin_channel))
             elif three_particles and first_spin == 0.:
                 nonint_proj_dict.append(
-                    self.group.get_nonint_proj_dict(qcis=self,
-                                                    nic_index=nic_index))
+                    self.group.get_proj_nonint_three_pions_dict(
+                        qcis=self, nic_index=nic_index))
             elif three_particles and first_spin == 1.:
                 nonint_proj_dict.append(
                     self.group.
-                    get_nonint_proj_dict_vector(qcis=self,
-                                                nic_index=nic_index))
-            elif three_particles and self.half_spin:
+                    get_proj_nonint_three_spinning_dict(
+                        qcis=self, nic_index=nic_index))
+            elif three_particles and self.spin_half:
                 nonint_proj_dict.append(
-                    self.group.get_nonint_proj_dict_half(qcis=self,
-                                                         nic_index=nic_index))
+                    self.group.get_proj_nonint_three_spinning_dict(
+                        qcis=self, nic_index=nic_index))
             else:
                 raise ValueError("only two and three particles with certain "
                                  "spin combinations are supported by "
@@ -1484,21 +1576,6 @@ class QCIndexSpace:
         else:
             nPspec = -1.0
         return nPspec
-
-    def _get_three_slice_index(self, sc_index):
-        three_channel_max = self.fcs.slices_by_three_masses[-1][-1]-1
-        if ((self.n_two_channels == 0) and (sc_index > three_channel_max)):
-            raise ValueError(f"using cindex = {sc_index} with three_slices = "
-                             f"{self.fcs.slices_by_three_masses} "
-                             f"and (no two-particle channels) "
-                             f"is not allowed")
-        slice_index = 0
-        for three_slice in self.fcs.slices_by_three_masses:
-            if sc_index > three_slice[1]:
-                slice_index = slice_index+1
-        if self.n_two_channels > 0:
-            slice_index = slice_index+1
-        return slice_index
 
     def get_tbks_sub_indices(self, E, L):
         """Get the indices of the relevant three-body kinematics spaces."""
